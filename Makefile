@@ -103,21 +103,9 @@ test:
 .PHONY: dist
 dist: $(STUFFBIN) build build-frontend pack-bin
 
-# pack-releases runns stuffbin packing on the given binary. This is used
-# in the .goreleaser post-build hook.
 .PHONY: pack-bin
 pack-bin: build-frontend $(BIN) $(STUFFBIN)
 	$(STUFFBIN) -a stuff -in ${BIN} -out ${BIN} ${STATIC}
-
-# Use goreleaser to do a dry run producing local builds.
-.PHONY: release-dry
-release-dry:
-	goreleaser release --parallelism 1 --clean --snapshot --skip=publish
-
-# Use goreleaser to build production releases and publish them.
-.PHONY: release
-release:
-	goreleaser release --parallelism 1 --clean
 
 # Build local docker images for development.
 .PHONY: build-dev-docker
