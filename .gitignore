@@ -18,3 +18,8 @@ node_modules
 listmonk
 dist/*
 uploads/
+.idea/
+.DS_Store
+dev_local.toml
+frontend/cypress/screenshots/
+frontend/cypress/videos/
