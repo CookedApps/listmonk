@@ -412,6 +412,34 @@ describe('Campaigns', () => {
   });
 });
 
+describe('Campaign clone', () => {
+  const cloneViaUI = (source, cloneName) => cy.request('POST', `${apiUrl}/api/campaigns`, {
+    name: source.name, subject: source.name, type: 'regular', content_type: 'richtext', lists: [1], ...source,
+  }).then(() => {
+    cy.visit('/admin/campaigns');
+    cy.get('[data-cy=btn-clone]').first().click();
+    cy.get('.modal input').clear().type(cloneName);
+    cy.get('.modal button.is-primary:eq(0)').click();
+    cy.location('pathname').should('match', /\/campaigns\/\d+$/);
+    return cy.location('pathname')
+      .then((path) => cy.request(`${apiUrl}/api/campaigns/${path.split('/').pop()}`))
+      .then((r) => r.body.data);
+  });
+
+  it('Resets DB', () => {
+    cy.resetDB();
+    cy.loginAndVisit('/admin/campaigns');
+  });
+
+  it('Keeps the segment query', () => {
+    const query = "subscribers.email LIKE '%@listmonk.app'";
+    cloneViaUI({ name: 'segment-src', subscriber_query: query }, 'segment-clone').then((clone) => {
+      expect(clone.name).to.equal('segment-clone');
+      expect(clone.subscriber_query).to.equal(query);
+    });
+  });
+});
+
 describe('Campaign image embed', () => {
   const mailhog = 'http://localhost:8025';
   const logoUrl = `${apiUrl}/uploads/logo.png`;

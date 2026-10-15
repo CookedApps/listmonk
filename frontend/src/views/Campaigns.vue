@@ -429,9 +429,11 @@ export default Vue.extend({
       // Fetch the template body from the server.
       let body = '';
       let bodySource = null;
+      let subscriberQuery = null;
       await this.$api.getCampaign(c.id).then((data) => {
         body = data.body;
         bodySource = data.bodySource;
+        subscriberQuery = data.subscriberQuery;
       });
 
       const now = this.$utils.getDate();
@@ -461,6 +463,7 @@ export default Vue.extend({
         archive_template_id: c.archiveTemplateId,
         archive_meta: c.archiveMeta,
         media: c.media.map((m) => m.id),
+        subscriber_query: subscriberQuery,
       };
 
       if (c.archive) {
