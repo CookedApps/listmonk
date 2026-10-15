@@ -86,16 +86,16 @@ type Queries struct {
 	GetOneCampaignSubscriber *sqlx.Stmt `query:"get-one-campaign-subscriber"`
 
 	// Non-prepared arbitrary segment queries (carry a %query% subscriber filter).
-	NextCampaignSubscribersFiltered string `query:"next-campaign-subscribers-filtered"`
-	CountCampaignRecipients         string `query:"count-campaign-recipients"`
-	UpdateCampaignFilteredToSend    string `query:"update-campaign-filtered-to-send"`
-	UpdateCampaign           *sqlx.Stmt `query:"update-campaign"`
-	UpdateCampaignStatus     *sqlx.Stmt `query:"update-campaign-status"`
-	UpdateCampaignCounts     *sqlx.Stmt `query:"update-campaign-counts"`
-	UpdateCampaignArchive    *sqlx.Stmt `query:"update-campaign-archive"`
-	RegisterCampaignView     *sqlx.Stmt `query:"register-campaign-view"`
-	DeleteCampaign           *sqlx.Stmt `query:"delete-campaign"`
-	DeleteCampaigns          *sqlx.Stmt `query:"delete-campaigns"`
+	NextCampaignSubscribersFiltered string     `query:"next-campaign-subscribers-filtered"`
+	CountCampaignRecipients         string     `query:"count-campaign-recipients"`
+	UpdateCampaignFilteredToSend    string     `query:"update-campaign-filtered-to-send"`
+	UpdateCampaign                  *sqlx.Stmt `query:"update-campaign"`
+	UpdateCampaignStatus            *sqlx.Stmt `query:"update-campaign-status"`
+	UpdateCampaignCounts            *sqlx.Stmt `query:"update-campaign-counts"`
+	UpdateCampaignArchive           *sqlx.Stmt `query:"update-campaign-archive"`
+	RegisterCampaignView            *sqlx.Stmt `query:"register-campaign-view"`
+	DeleteCampaign                  *sqlx.Stmt `query:"delete-campaign"`
+	DeleteCampaigns                 *sqlx.Stmt `query:"delete-campaigns"`
 
 	InsertMedia *sqlx.Stmt `query:"insert-media"`
 	GetMedia    *sqlx.Stmt `query:"get-media"`
