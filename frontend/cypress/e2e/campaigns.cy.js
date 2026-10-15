@@ -438,6 +438,13 @@ describe('Campaign clone', () => {
       expect(clone.subscriber_query).to.equal(query);
     });
   });
+
+  it('Keeps attribs with their original keys', () => {
+    const attribs = { promo_code: 'X1', nested: { snake_key: 1 } };
+    cloneViaUI({ name: 'attribs-src', attribs }, 'attribs-clone').then((clone) => {
+      expect(clone.attribs).to.deep.equal(attribs);
+    });
+  });
 });
 
 describe('Campaign image embed', () => {

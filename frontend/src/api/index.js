@@ -291,7 +291,7 @@ export const getCampaigns = async (params) => http.get('/api/campaigns', {
 
 export const getCampaign = async (id) => http.get(`/api/campaigns/${id}`, {
   loading: models.campaigns,
-  camelCase: (keyPath) => !keyPath.startsWith('.headers'),
+  camelCase: (keyPath) => !keyPath.startsWith('.headers') && !keyPath.startsWith('.attribs'),
 });
 
 export const getCampaignStats = async () => http.get('/api/campaigns/running/stats', {});

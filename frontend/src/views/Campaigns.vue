@@ -430,10 +430,12 @@ export default Vue.extend({
       let body = '';
       let bodySource = null;
       let subscriberQuery = null;
+      let attribs = null;
       await this.$api.getCampaign(c.id).then((data) => {
         body = data.body;
         bodySource = data.bodySource;
         subscriberQuery = data.subscriberQuery;
+        attribs = data.attribs;
       });
 
       const now = this.$utils.getDate();
@@ -464,6 +466,7 @@ export default Vue.extend({
         archive_meta: c.archiveMeta,
         media: c.media.map((m) => m.id),
         subscriber_query: subscriberQuery,
+        attribs,
       };
 
       if (c.archive) {
