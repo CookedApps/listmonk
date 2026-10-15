@@ -44,8 +44,6 @@ means a deploy fails loudly if the image was not shipped first (instead of pulli
 
 - The `subscriber_query` migration is `v6.3.0` and is an `ADD COLUMN IF NOT EXISTS` (nullable):
   instant and non-destructive even on large subscriber tables.
-- Fork maintenance: if a future upstream release also ships a `v6.3.0` migration, reconcile it
-  (ours is idempotent and safe to re-run; rename if you need upstream's `v6.3.0` to still apply).
 - `ship-fork-image.sh` overwrites `listmonk-fork:prod` each run; the old image becomes dangling
   and is cleaned by the server's `docker image prune -f`. The `:<sha>` tags accumulate; prune
   occasionally.
