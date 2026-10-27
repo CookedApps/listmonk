@@ -29,6 +29,10 @@ type Settings struct {
 	AppMessageSlidingWindowDuration string `json:"app.message_sliding_window_duration"`
 	AppMessageSlidingWindowRate     int    `json:"app.message_sliding_window_rate"`
 
+	AppRampUpEnabled bool    `json:"app.ramp_up_enabled"`
+	AppRampUpStart   int     `json:"app.ramp_up_start"`
+	AppRampUpGrowth  float64 `json:"app.ramp_up_growth"`
+
 	PrivacyIndividualTracking bool     `json:"privacy.individual_tracking"`
 	PrivacyDisableTracking    bool     `json:"privacy.disable_tracking"`
 	PrivacyUnsubHeader        bool     `json:"privacy.unsubscribe_header"`

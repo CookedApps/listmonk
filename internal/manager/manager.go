@@ -56,6 +56,7 @@ type Store interface {
 	UpdateCampaignCounts(campID int, toSend int, sent int, lastSubID int) error
 	SetCampaignToSend(c *models.Campaign) (int, error)
 	RecordCampaignSends(campID int, subIDs []int) error
+	DeferCampaign(campID int, until time.Time) error
 	CreateLink(url string) (string, error)
 	BlocklistSubscriber(id int64) error
 	DeleteSubscriber(id int64) error
@@ -138,6 +139,9 @@ type Config struct {
 	SlidingWindow         bool
 	SlidingWindowDuration time.Duration
 	SlidingWindowRate     int
+	RampUpEnabled         bool
+	RampUpStart           int
+	RampUpGrowth          float64
 	RequeueOnError        bool
 	FromEmail             string
 	IndividualTracking    bool
@@ -470,12 +474,24 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 
 			// next-campaigns computes an unfiltered to_send. For a segmented campaign,
 			// correct it once now (the live pipe keeps next-campaigns from re-clobbering it).
-			if c.SubscriberQuery.Valid && strings.TrimSpace(c.SubscriberQuery.String) != "" {
+			segmented := c.SubscriberQuery.Valid && strings.TrimSpace(c.SubscriberQuery.String) != ""
+			if segmented {
 				if n, err := m.store.SetCampaignToSend(c); err != nil {
 					m.log.Printf("error correcting to_send for segmented campaign (%s): %v", c.Name, err)
 				} else {
 					c.ToSend = n
 				}
+			}
+
+			// next-campaigns returns the row from before its own counts update.
+			if fresh, err := m.store.GetCampaign(c.ID); err != nil {
+				m.log.Printf("error refreshing campaign (%s): %v", c.Name, err)
+			} else {
+				if !segmented {
+					c.ToSend = fresh.ToSend
+				}
+				c.Sent = fresh.Sent
+				c.StartedAt = fresh.StartedAt
 			}
 
 			// If subscriber processing is busy, move on. Blocking and waiting

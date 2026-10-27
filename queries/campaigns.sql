@@ -26,7 +26,7 @@ camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, send_at, headers, attribs, tags, messenger, template_id, to_send,
         max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source,
-        subscriber_query)
+        subscriber_query, ramp_days)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -43,7 +43,8 @@ camp AS (
             -- body_source
             COALESCE($21, (SELECT body_source FROM tpl)),
             -- subscriber_query
-            $22
+            $22,
+            $23
         RETURNING id
 ),
 med AS (
@@ -468,6 +469,11 @@ UPDATE campaigns SET to_send = COALESCE((SELECT to_send FROM counts), 0), update
 WHERE id = $1
 RETURNING to_send;
 
+-- name: defer-campaign
+-- Parks a running ramped campaign until its next daily window. next-campaigns resumes it.
+UPDATE campaigns SET status='scheduled', send_at=$2, updated_at=NOW()
+    WHERE id=$1 AND status='running';
+
 -- name: insert-campaign-sends
 -- Records the subscribers a campaign batch was handed to the messenger for.
 INSERT INTO campaign_sends (campaign_id, subscriber_id)
@@ -516,6 +522,7 @@ WITH camp AS (
         archive_meta=$18,
         body_source=$20,
         subscriber_query=$21,
+        ramp_days=$22,
         updated_at=NOW()
     WHERE id = $1 RETURNING id
 ),

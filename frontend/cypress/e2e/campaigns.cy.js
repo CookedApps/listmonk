@@ -447,6 +447,39 @@ describe('Campaign clone', () => {
   });
 });
 
+describe('Campaign ramp-up', () => {
+  it('Resets DB', () => {
+    cy.resetDB();
+    cy.loginAndVisit('/admin/campaigns');
+  });
+
+  it('Saves custom ramp days and shows the daily preview', () => {
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'ramp-src', subject: 'ramp', type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => {
+      cy.visit(`/admin/campaigns/${r.body.data.id}`);
+      cy.get('[data-cy=ramp-mode] select').select('custom');
+      cy.get('[data-cy=ramp-days] input').clear().type('4');
+      cy.get('[data-cy=ramp-preview] .slice').should('have.length', 4);
+      cy.get('[data-cy=btn-save]').click();
+      cy.wait(250);
+      cy.request(`${apiUrl}/api/campaigns/${r.body.data.id}`).then((c) => {
+        expect(c.body.data.ramp_days).to.equal(4);
+      });
+
+      cy.reload();
+      cy.get('[data-cy=ramp-mode] select').should('have.value', 'custom');
+      cy.get('[data-cy=ramp-mode] select').select('off');
+      cy.get('[data-cy=ramp-preview]').should('not.exist');
+      cy.get('[data-cy=btn-save]').click();
+      cy.wait(250);
+      cy.request(`${apiUrl}/api/campaigns/${r.body.data.id}`).then((c) => {
+        expect(c.body.data.ramp_days).to.equal(0);
+      });
+    });
+  });
+});
+
 describe('Campaign image embed', () => {
   const mailhog = 'http://localhost:8025';
   const logoUrl = `${apiUrl}/uploads/logo.png`;

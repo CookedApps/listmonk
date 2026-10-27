@@ -27,7 +27,12 @@ type serverConfig struct {
 		DisableTracking    bool `json:"disable_tracking"`
 		IndividualTracking bool `json:"individual_tracking"`
 	} `json:"privacy"`
-	MediaProvider string          `json:"media_provider"`
+	MediaProvider string `json:"media_provider"`
+	RampUp        struct {
+		Enabled bool    `json:"enabled"`
+		Start   int     `json:"start"`
+		Growth  float64 `json:"growth"`
+	} `json:"ramp_up"`
 	Messengers    []string        `json:"messengers"`
 	Langs         []i18nLang      `json:"langs"`
 	Lang          string          `json:"lang"`
@@ -74,6 +79,9 @@ func (a *App) GetServerConfig(c echo.Context) error {
 	}
 
 	out.MediaProvider = a.cfg.MediaUpload.Provider
+	out.RampUp.Enabled = a.cfg.RampUpEnabled
+	out.RampUp.Start = a.cfg.RampUpStart
+	out.RampUp.Growth = a.cfg.RampUpGrowth
 
 	// Language list.
 	langList, err := getI18nLangList(a.fs)

@@ -77,6 +77,9 @@
               {{ $utils.niceDate(props.row.sendAt, true) }}
             </span>
           </p>
+          <p v-if="rampDay(props.row)" class="is-size-7 has-text-grey">
+            {{ $t('campaigns.rampUpDay', rampDay(props.row)) }}
+          </p>
         </div>
       </b-table-column>
       <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" width="25%" sortable
@@ -282,6 +285,7 @@ import { mapState } from 'vuex';
 import CampaignPreview from '../components/CampaignPreview.vue';
 import CopyText from '../components/CopyText.vue';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
+import { recommendedRampDays } from '../rampup';
 
 export default Vue.extend({
   components: {
@@ -332,6 +336,24 @@ export default Vue.extend({
     },
     isDone(c) {
       return c.status === 'finished' || c.status === 'cancelled';
+    },
+
+    rampDay(c) {
+      if (!c.startedAt || (c.status !== 'running' && c.status !== 'scheduled')) {
+        return null;
+      }
+
+      const cfg = this.serverConfig.ramp_up || { enabled: false, start: 2000, growth: 2 };
+      let days = c.rampDays;
+      if (days === null || days === undefined) {
+        days = cfg.enabled ? recommendedRampDays(c.toSend, cfg.start, cfg.growth) : 0;
+      }
+      if (days < 2) {
+        return null;
+      }
+
+      const day = Math.min(dayjs().diff(dayjs(c.startedAt), 'day') + 1, days);
+      return { day, days };
     },
 
     isRunning(id) {
@@ -531,7 +553,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['campaigns', 'loading']),
+    ...mapState(['campaigns', 'loading', 'serverConfig']),
 
     numSelectedCampaigns() {
       return this.bulk.all ? this.campaigns.total : this.bulk.checked.length;

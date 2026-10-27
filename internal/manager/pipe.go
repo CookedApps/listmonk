@@ -15,6 +15,7 @@ type pipe struct {
 	rate       *ratecounter.RateCounter
 	wg         *sync.WaitGroup
 	sent       atomic.Int64
+	queued     atomic.Int64
 	lastID     atomic.Uint64
 	errors     atomic.Uint64
 	stopped    atomic.Bool
@@ -79,8 +80,16 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 // in the current batch or not. A false indicates that all subscribers
 // have been processed, or that a campaign has been paused or cancelled.
 func (p *pipe) NextSubscribers() (bool, error) {
+	limit, deferred, err := p.rampLimit(time.Now())
+	if err != nil {
+		return false, err
+	}
+	if deferred {
+		return false, nil
+	}
+
 	// Fetch the next batch of subscribers from a 'running' campaign.
-	subs, err := p.m.store.NextSubscribers(p.camp.ID, p.m.cfg.BatchSize)
+	subs, err := p.m.store.NextSubscribers(p.camp.ID, limit)
 	if err != nil {
 		return false, fmt.Errorf("error fetching campaign subscribers (%s): %v", p.camp.Name, err)
 	}
@@ -90,6 +99,8 @@ func (p *pipe) NextSubscribers() (bool, error) {
 	if len(subs) == 0 {
 		return false, nil
 	}
+
+	p.queued.Add(int64(len(subs)))
 
 	ids := make([]int, len(subs))
 	for i, s := range subs {
@@ -144,6 +155,55 @@ func (p *pipe) NextSubscribers() (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (p *pipe) rampDays() int {
+	if p.camp.RampDays.Valid {
+		return max(p.camp.RampDays.Int, 0)
+	}
+	if !p.m.cfg.RampUpEnabled {
+		return 0
+	}
+
+	return RecommendedRampDays(p.camp.ToSend, p.m.cfg.RampUpStart, p.m.cfg.RampUpGrowth)
+}
+
+func (p *pipe) rampLimit(now time.Time) (limit int, deferred bool, err error) {
+	limit = p.m.cfg.BatchSize
+
+	days := p.rampDays()
+	if days < 2 {
+		return limit, false, nil
+	}
+
+	start := now
+	if p.camp.StartedAt.Valid {
+		start = p.camp.StartedAt.Time
+	}
+	r := rampUp{caps: RampCaps(p.camp.ToSend, days, p.m.cfg.RampUpGrowth), start: start}
+	day := r.day(now)
+	if r.isLastDay(day) {
+		return limit, false, nil
+	}
+
+	sent := p.camp.Sent + int(p.queued.Load())
+	allowed := r.allowance(day, sent)
+	if allowed > 0 {
+		return min(limit, allowed), false, nil
+	}
+	if sent >= p.camp.ToSend {
+		return limit, false, nil
+	}
+
+	next := r.nextWindow(day)
+	if err := p.m.store.DeferCampaign(p.camp.ID, next); err != nil {
+		return 0, false, fmt.Errorf("error deferring ramped campaign (%s): %v", p.camp.Name, err)
+	}
+	p.Stop(false)
+	p.m.log.Printf("ramp-up: campaign (%s) finished day %d of %d, continues at %s",
+		p.camp.Name, day+1, days, next.Format(time.RFC822Z))
+
+	return 0, true, nil
 }
 
 // OnError keeps track of the number of errors that occur while sending messages

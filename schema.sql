@@ -131,6 +131,9 @@ CREATE TABLE campaigns (
     -- Optional ad-hoc segment: SQL expression AND-gated with consent at send time.
     subscriber_query    TEXT NULL,
 
+    -- Ramp-up: NULL = instance default, 0 = off, N = spread the send over N days.
+    ramp_days           INT NULL,
+
     started_at       TIMESTAMP WITH TIME ZONE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -251,6 +254,9 @@ INSERT INTO settings (key, value) VALUES
     ('app.message_sliding_window', 'false'),
     ('app.message_sliding_window_duration', '"1h"'),
     ('app.message_sliding_window_rate', '10000'),
+    ('app.ramp_up_enabled', 'true'),
+    ('app.ramp_up_start', '2000'),
+    ('app.ramp_up_growth', '2'),
     ('app.cache_slow_queries', 'false'),
     ('app.cache_slow_queries_interval', '"0 3 * * *"'),
     ('app.enable_public_archive', 'true'),

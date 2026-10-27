@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/knadh/listmonk/internal/core"
@@ -82,6 +83,12 @@ func (s *store) NextSubscribers(campID, limit int) ([]models.Subscriber, error) 
 // new value. Called once when a filtered campaign starts.
 func (s *store) SetCampaignToSend(c *models.Campaign) (int, error) {
 	return s.core.SetCampaignFilteredToSend(c.ID, c.SubscriberQuery.String)
+}
+
+// DeferCampaign parks a running campaign as scheduled until the given time.
+func (s *store) DeferCampaign(campID int, until time.Time) error {
+	_, err := s.queries.DeferCampaign.Exec(campID, until)
+	return err
 }
 
 // RecordCampaignSends logs the subscribers a campaign batch was handed out to.

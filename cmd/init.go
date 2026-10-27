@@ -88,6 +88,9 @@ type Config struct {
 	ShowOptinPage                 bool     `koanf:"show_optin_page"`
 	Lang                          string   `koanf:"lang"`
 	DBBatchSize                   int      `koanf:"batch_size"`
+	RampUpEnabled                 bool     `koanf:"ramp_up_enabled"`
+	RampUpStart                   int      `koanf:"ramp_up_start"`
+	RampUpGrowth                  float64  `koanf:"ramp_up_growth"`
 	Privacy                       struct {
 		IndividualTracking bool            `koanf:"individual_tracking"`
 		DisableTracking    bool            `koanf:"disable_tracking"`
@@ -612,6 +615,9 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 		SlidingWindow:         ko.Bool("app.message_sliding_window"),
 		SlidingWindowDuration: ko.Duration("app.message_sliding_window_duration"),
 		SlidingWindowRate:     ko.Int("app.message_sliding_window_rate"),
+		RampUpEnabled:         ko.Bool("app.ramp_up_enabled"),
+		RampUpStart:           ko.Int("app.ramp_up_start"),
+		RampUpGrowth:          ko.Float64("app.ramp_up_growth"),
 		ScanInterval:          time.Second * 5,
 		ScanCampaigns:         !ko.Bool("passive"),
 	}, newManagerStore(q, co, md), i, lo)

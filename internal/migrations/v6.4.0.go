@@ -21,5 +21,16 @@ func V6_4_0(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf, lo *log.Logger
 		return err
 	}
 
+	if _, err := db.Exec(`
+		ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ramp_days INT NULL;
+		INSERT INTO settings (key, value) VALUES
+			('app.ramp_up_enabled', 'true'),
+			('app.ramp_up_start', '2000'),
+			('app.ramp_up_growth', '2')
+		ON CONFLICT DO NOTHING;
+	`); err != nil {
+		return err
+	}
+
 	return nil
 }

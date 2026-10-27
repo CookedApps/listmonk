@@ -46,6 +46,8 @@ type campContentReq struct {
 	To   string `json:"to"`
 }
 
+const maxRampDays = 365
+
 var (
 	reFromAddress = regexp.MustCompile(`((.+?)\s)?<(.+?)@(.+?)>`)
 	reSlug        = regexp.MustCompile(`[^\p{L}\p{M}\p{N}]`)
@@ -789,6 +791,10 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 
 	if len(c.ListIDs) == 0 {
 		return c, errors.New(a.i18n.T("campaigns.fieldInvalidListIDs"))
+	}
+
+	if c.RampDays.Valid && (c.RampDays.Int < 0 || c.RampDays.Int > maxRampDays) {
+		return c, errors.New(a.i18n.T("campaigns.fieldInvalidRampDays"))
 	}
 
 	if !a.manager.HasMessenger(c.Messenger) {

@@ -54,6 +54,34 @@
     </div><!-- sliding window -->
 
     <div>
+      <div class="columns">
+        <div class="column is-6">
+          <b-field :message="$t('settings.performance.rampUpHelp')">
+            <b-switch v-model="data['app.ramp_up_enabled']" name="app.ramp_up_enabled">
+              {{ $t('settings.performance.rampUp') }}
+            </b-switch>
+          </b-field>
+        </div>
+
+        <div class="column is-3">
+          <b-field :label="$t('settings.performance.rampUpStart')" label-position="on-border"
+            :message="$t('settings.performance.rampUpStartHelp')">
+            <b-numberinput v-model="data['app.ramp_up_start']" name="app.ramp_up_start" type="is-light"
+              controls-position="compact" placeholder="2000" min="1" max="10000000" />
+          </b-field>
+        </div>
+
+        <div class="column is-3">
+          <b-field :label="$t('settings.performance.rampUpGrowth')" label-position="on-border"
+            :message="$t('settings.performance.rampUpGrowthHelp')">
+            <b-numberinput v-model="data['app.ramp_up_growth']" name="app.ramp_up_growth" type="is-light"
+              controls-position="compact" placeholder="2" min="1" max="10" :step="0.1" />
+          </b-field>
+        </div>
+      </div>
+    </div><!-- ramp-up -->
+
+    <div>
       <hr />
       <div class="columns">
         <div class="column is-4">

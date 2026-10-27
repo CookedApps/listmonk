@@ -63,6 +63,9 @@ type Campaign struct {
 	// Optional ad-hoc segment SQL expression AND-gated with consent at send time.
 	SubscriberQuery null.String `db:"subscriber_query" json:"subscriber_query"`
 
+	// NULL = instance default, 0 = off, N = spread the send over N days.
+	RampDays null.Int `db:"ramp_days" json:"ramp_days"`
+
 	// TemplateBody is joined in from templates by the next-campaigns query.
 	TemplateBody        string             `db:"template_body" json:"-"`
 	ArchiveTemplateBody string             `db:"archive_template_body" json:"-"`

@@ -153,6 +153,48 @@
                   </div>
                 </div>
 
+                <div v-if="form.messenger.startsWith('email')" class="ramp-up" data-cy="ramp-up">
+                  <div class="columns">
+                    <div class="column is-7">
+                      <b-field :label="$t('campaigns.rampUp')" label-position="on-border"
+                        :message="$t('campaigns.rampUpHelp')">
+                        <b-select v-model="rampMode" :disabled="!canEdit" expanded name="ramp_mode" data-cy="ramp-mode">
+                          <option value="auto">{{ rampAutoLabel }}</option>
+                          <option value="custom">{{ $t('campaigns.rampUpCustom') }}</option>
+                          <option value="off">{{ $t('campaigns.rampUpOff') }}</option>
+                        </b-select>
+                      </b-field>
+                    </div>
+                    <div class="column is-5" v-if="rampMode === 'custom'">
+                      <b-field :label="$t('campaigns.rampUpDays')" label-position="on-border">
+                        <b-numberinput v-model="rampCustomDays" :disabled="!canEdit" min="1" max="365" expanded
+                          controls-position="compact" name="ramp_days" data-cy="ramp-days" />
+                      </b-field>
+                    </div>
+                  </div>
+
+                  <div v-if="rampDaysEffective > 1" class="ramp-preview mb-5" data-cy="ramp-preview">
+                    <p v-if="recipientCount === null" class="is-size-7 has-text-grey">
+                      {{ $t('campaigns.rampUpNoRecipients') }}
+                    </p>
+                    <template v-else>
+                      <div v-for="(s, i) in rampSlices" :key="i" class="slice">
+                        <span class="day is-size-7 has-text-grey">{{ i + 1 }}</span>
+                        <span class="bar"><span :style="{ width: `${s.pct}%` }" /></span>
+                        <span class="is-size-7">
+                          {{ $t('campaigns.rampUpPerDay', { num: $utils.formatNumber(s.num), date: s.date }) }}
+                        </span>
+                      </div>
+                      <p class="is-size-7 has-text-grey mt-2">
+                        {{ $t('campaigns.rampUpFinishes', { date: rampSlices[rampSlices.length - 1].date }) }}
+                      </p>
+                      <p v-if="rampWarnStart" class="is-size-7 has-text-danger">
+                        {{ $t('campaigns.rampUpWarnStart', { num: $utils.formatNumber(rampSettings.start) }) }}
+                      </p>
+                    </template>
+                  </div>
+                </div>
+
                 <div>
                   <p class="has-text-right">
                     <a href="#" @click.prevent="onShowHeaders" data-cy="btn-headers">
@@ -347,6 +389,7 @@ import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import ListSelector from '../components/ListSelector.vue';
 import Media from './Media.vue';
+import { rampCaps, recommendedRampDays } from '../rampup';
 
 export default Vue.extend({
   components: {
@@ -377,6 +420,9 @@ export default Vue.extend({
 
       // Transient count from the "Preview recipients" button for the segment query.
       recipientCount: null,
+
+      rampMode: 'auto',
+      rampCustomDays: 3,
 
       data: {},
 
@@ -551,6 +597,15 @@ export default Vue.extend({
         };
         this.isAttachFieldVisible = this.form.media.length > 0;
 
+        if (data.rampDays === null || data.rampDays === undefined) {
+          this.rampMode = 'auto';
+        } else if (data.rampDays === 0) {
+          this.rampMode = 'off';
+        } else {
+          this.rampMode = 'custom';
+          this.rampCustomDays = data.rampDays;
+        }
+
         this.form.media = this.form.media.map((f) => {
           if (!f.id) {
             return { ...f, filename: `❌ ${f.filename}` };
@@ -592,6 +647,7 @@ export default Vue.extend({
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
         subscriber_query: this.form.subscriberQuery || null,
+        ramp_days: this.rampDaysValue,
         from_email: this.form.fromEmail,
         content_type: this.form.content.contentType,
         messenger: this.form.messenger,
@@ -610,6 +666,11 @@ export default Vue.extend({
     },
 
     onPreviewRecipients() {
+      if (this.form.lists.length === 0) {
+        this.recipientCount = null;
+        return;
+      }
+
       this.$api.previewCampaignRecipients({
         lists: this.form.lists.map((l) => l.id),
         query: this.form.subscriberQuery,
@@ -625,6 +686,7 @@ export default Vue.extend({
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
         subscriber_query: this.form.subscriberQuery || null,
+        ramp_days: this.rampDaysValue,
         from_email: this.form.fromEmail,
         messenger: this.form.messenger,
         type: 'regular',
@@ -765,6 +827,60 @@ export default Vue.extend({
     otherMessengers() {
       return this.serverConfig.messengers.filter((m) => m !== 'email' && !m.startsWith('email-'));
     },
+
+    rampSettings() {
+      return this.serverConfig.ramp_up || { enabled: false, start: 2000, growth: 2 };
+    },
+
+    rampRecommendedDays() {
+      if (this.recipientCount === null) {
+        return null;
+      }
+      return recommendedRampDays(this.recipientCount, this.rampSettings.start, this.rampSettings.growth);
+    },
+
+    rampAutoLabel() {
+      if (!this.rampSettings.enabled) {
+        return this.$t('campaigns.rampUpAutoOff');
+      }
+      return this.$t('campaigns.rampUpAuto', { days: this.rampRecommendedDays ?? '…' });
+    },
+
+    rampDaysValue() {
+      if (this.rampMode === 'off') {
+        return 0;
+      }
+      if (this.rampMode === 'custom') {
+        return this.rampCustomDays;
+      }
+      return null;
+    },
+
+    rampDaysEffective() {
+      if (this.rampMode === 'auto') {
+        return this.rampSettings.enabled ? (this.rampRecommendedDays ?? 0) : 0;
+      }
+      return this.rampDaysValue;
+    },
+
+    rampSlices() {
+      if (this.recipientCount === null || this.rampDaysEffective < 2) {
+        return [];
+      }
+
+      const caps = rampCaps(this.recipientCount, this.rampDaysEffective, this.rampSettings.growth);
+      const biggest = Math.max(...caps, 1);
+      const start = dayjs(this.form.sendLater && this.form.sendAtDate ? this.form.sendAtDate : undefined);
+      return caps.map((num, i) => ({
+        num,
+        pct: (num / biggest) * 100,
+        date: start.add(i, 'day').format('ddd, D MMM'),
+      }));
+    },
+
+    rampWarnStart() {
+      return this.rampSlices.length > 0 && this.rampSlices[0].num > this.rampSettings.start;
+    },
   },
 
   beforeRouteLeave(to, from, next) {
@@ -778,6 +894,10 @@ export default Vue.extend({
   watch: {
     selectedLists() {
       this.form.lists = this.selectedLists;
+    },
+
+    'form.lists': function onListsChange() {
+      this.onPreviewRecipients();
     },
 
     // eslint-disable-next-line func-names
