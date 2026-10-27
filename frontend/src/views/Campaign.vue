@@ -102,7 +102,7 @@
                         name="subscriber_query" placeholder="subscribers.attribs->>'city' = 'Berlin'" />
                     </b-field>
                     <b-button v-if="form.subscriberQuery" size="is-small" icon-left="account-search-outline"
-                      :disabled="form.lists.length === 0" @click="onPreviewRecipients">
+                      :disabled="form.lists.length === 0" @click="onPreviewRecipients" data-cy="btn-preview-recipients">
                       {{ $t('campaigns.previewRecipients') }}
                     </b-button>
                   </template>

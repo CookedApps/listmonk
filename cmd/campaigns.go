@@ -421,9 +421,9 @@ func (a *App) PreviewCampaignRecipients(c echo.Context) error {
 	user := auth.GetUser(c)
 
 	var req struct {
-		Lists   []int           `json:"lists"`
-		Query   string          `json:"query"`
-		Segment json.RawMessage `json:"segment"`
+		Lists           []int           `json:"lists"`
+		SubscriberQuery string          `json:"subscriber_query"`
+		Segment         json.RawMessage `json:"segment"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -435,7 +435,7 @@ func (a *App) PreviewCampaignRecipients(c echo.Context) error {
 			a.i18n.Ts("globals.messages.missingFields", "name", "{globals.terms.lists}"))
 	}
 
-	q := formatSQLExp(req.Query)
+	q := formatSQLExp(req.SubscriberQuery)
 	if seg, err := segment.Parse(req.Segment); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.invalidSegment", "error", err.Error()))
 	} else if !seg.IsEmpty() {

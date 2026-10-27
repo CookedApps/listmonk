@@ -501,6 +501,19 @@ describe('Campaign audience rules', () => {
     });
   });
 
+  it('Counts only the recipients that match the SQL query', () => {
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'sql-count', subject: 'sql', type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => {
+      cy.visit(`/admin/campaigns/${r.body.data.id}`);
+      cy.get('[data-cy=recipient-count]').contains('1 recipients');
+      cy.get('[data-cy=segment-mode]').click();
+      cy.get('textarea[name=subscriber_query]').type("subscribers.email = 'nobody@example.com'");
+      cy.get('[data-cy=btn-preview-recipients]').click();
+      cy.get('[data-cy=recipient-count]').contains('0 recipients');
+    });
+  });
+
   it('Rejects raw SQL from a user without the SQL permission but accepts rules', () => {
     cy.request('POST', `${apiUrl}/api/campaigns`, {
       name: 'rules-api', subject: 'rules', type: 'regular', content_type: 'richtext', lists: [1],
