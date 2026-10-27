@@ -403,7 +403,7 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import ListSelector from '../components/ListSelector.vue';
-import SegmentBuilder from '../components/SegmentBuilder.vue';
+import SegmentBuilder, { isSegmentComplete } from '../components/SegmentBuilder.vue';
 import Media from './Media.vue';
 import { rampCaps, recommendedRampDays } from '../rampup';
 
@@ -884,9 +884,7 @@ export default Vue.extend({
     },
 
     isSegmentComplete() {
-      const seg = this.form.segment;
-      return !seg || seg.rules.every((r) => r.field !== 'attribs.'
-        && (r.value !== null || r.op === 'is_set' || r.op === 'not_set'));
+      return isSegmentComplete(this.form.segment);
     },
 
     segmentPayload() {

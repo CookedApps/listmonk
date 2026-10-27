@@ -31,9 +31,9 @@ var (
 	}
 )
 
-// GetSubscriberAttribKeys returns the attribute keys seen on recent subscribers.
-func (c *Core) GetSubscriberAttribKeys() ([]string, error) {
-	out := []string{}
+// GetSubscriberAttribKeys returns the attribute keys seen on recent subscribers with their detected value type.
+func (c *Core) GetSubscriberAttribKeys() ([]models.SubscriberAttribKey, error) {
+	out := []models.SubscriberAttribKey{}
 	if err := c.q.GetSubscriberAttribKeys.Select(&out); err != nil {
 		c.log.Printf("error fetching subscriber attrib keys: %v", err)
 		return nil, echo.NewHTTPError(http.StatusInternalServerError,

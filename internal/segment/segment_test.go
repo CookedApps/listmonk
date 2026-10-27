@@ -87,3 +87,49 @@ func TestRejects(t *testing.T) {
 		t.Error("too many rules should be rejected")
 	}
 }
+
+func TestTypedAttribs(t *testing.T) {
+	const (
+		num  = `(CASE WHEN jsonb_typeof(subscribers.attribs->'games') = 'number' THEN (subscribers.attribs->>'games')::NUMERIC WHEN jsonb_typeof(subscribers.attribs->'games') = 'string' AND subscribers.attribs->>'games' ~ '^\s*-?\d+(\.\d+)?\s*$' THEN (subscribers.attribs->>'games')::NUMERIC END)`
+		date = `(CASE WHEN jsonb_typeof(subscribers.attribs->'seen') = 'string' AND subscribers.attribs->>'seen' ~ '^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?)?$' AND pg_input_is_valid(subscribers.attribs->>'seen', 'timestamptz') THEN (subscribers.attribs->>'seen')::TIMESTAMPTZ END)`
+	)
+
+	cases := map[string]string{
+		`{"rules":[{"field":"attribs.consent","type":"bool","op":"is_true","value":null}]}`:        `((subscribers.attribs->>'consent' = 'true'))`,
+		`{"rules":[{"field":"attribs.restricted","type":"bool","op":"is_not_true","value":null}]}`: `((subscribers.attribs->>'restricted' IS DISTINCT FROM 'true'))`,
+		`{"rules":[{"field":"attribs.games","type":"number","op":"gte","value":2}]}`:               `((` + num + ` >= 2))`,
+		`{"rules":[{"field":"attribs.games","type":"number","op":"neq","value":"3"}]}`:             `((` + num + ` IS DISTINCT FROM 3))`,
+		`{"rules":[{"field":"attribs.seen","type":"date","op":"in_last_days","value":200}]}`:       `((` + date + ` >= NOW() - INTERVAL '200 days'))`,
+		`{"rules":[{"field":"attribs.seen","type":"date","op":"not_in_last_days","value":30}]}`:    `((` + date + ` < NOW() - INTERVAL '30 days'))`,
+		`{"rules":[{"field":"attribs.seen","type":"date","op":"before","value":"2026-01-01"}]}`:    `((` + date + ` < '2026-01-01'))`,
+		`{"rules":[{"field":"attribs.seen","type":"date","op":"is_set","value":null}]}`:            `((subscribers.attribs->'seen' IS NOT NULL AND subscribers.attribs->'seen' != 'null'::JSONB))`,
+		`{"rules":[{"field":"attribs.country","type":"text","op":"neq","value":"DE"}]}`:            `((subscribers.attribs->>'country' IS DISTINCT FROM 'DE'))`,
+		`{"rules":[{"field":"attribs.country","type":"text","op":"not_contains","value":"x"}]}`:    `((COALESCE(subscribers.attribs->>'country', '') NOT ILIKE '%x%'))`,
+		`{"rules":[{"field":"attribs.country","type":"text","op":"eq","value":"DE"}]}`:             `(subscribers.attribs->>'country' = 'DE')`,
+	}
+	for doc, want := range cases {
+		if got := compile(t, doc); got != want {
+			t.Errorf("%s\n got: %s\nwant: %s", doc, got, want)
+		}
+	}
+}
+
+func TestTypedAttribsReject(t *testing.T) {
+	for _, doc := range []string{
+		`{"rules":[{"field":"attribs.a","type":"bool","op":"gt","value":1}]}`,
+		`{"rules":[{"field":"attribs.a","type":"number","op":"contains","value":"x"}]}`,
+		`{"rules":[{"field":"attribs.a","type":"number","op":"gte","value":"many"}]}`,
+		`{"rules":[{"field":"attribs.a","type":"date","op":"in_last_days","value":-1}]}`,
+		`{"rules":[{"field":"attribs.a","type":"date","op":"after","value":"yesterday"}]}`,
+		`{"rules":[{"field":"attribs.a","type":"json","op":"eq","value":"x"}]}`,
+		`{"rules":[{"field":"attribs.a';--","type":"text","op":"eq","value":"x"}]}`,
+	} {
+		s, err := Parse([]byte(doc))
+		if err != nil {
+			continue
+		}
+		if _, err := s.Compile(); err == nil {
+			t.Errorf("%s compiled, want an error", doc)
+		}
+	}
+}

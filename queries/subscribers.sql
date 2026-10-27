@@ -9,10 +9,19 @@ SELECT * FROM subscribers WHERE
     END;
 
 -- name: get-subscriber-attrib-keys
--- Top-level attribute keys sampled from the newest subscribers, for the segment builder.
-SELECT DISTINCT JSONB_OBJECT_KEYS(attribs) AS key
-    FROM (SELECT attribs FROM subscribers WHERE attribs != '{}' ORDER BY id DESC LIMIT 1000) s
-    ORDER BY key;
+-- Top-level attribute keys with their most common value type, sampled from the newest subscribers, for the segment builder.
+WITH vals AS (
+    SELECT e.key, (CASE JSONB_TYPEOF(e.value)
+            WHEN 'boolean' THEN 'bool'
+            WHEN 'number' THEN 'number'
+            WHEN 'string' THEN (CASE WHEN e.value #>> '{}' ~ '^\d{4}-\d{2}-\d{2}' THEN 'date' ELSE 'text' END)
+            ELSE 'text'
+        END) AS type
+    FROM (SELECT attribs FROM subscribers WHERE attribs != '{}' ORDER BY id DESC LIMIT 1000) s,
+        JSONB_EACH(s.attribs) e
+    WHERE JSONB_TYPEOF(e.value) != 'null'
+)
+SELECT key, MODE() WITHIN GROUP (ORDER BY type) AS type FROM vals GROUP BY key ORDER BY key;
 
 -- name: has-subscriber-list
 -- Used for checking access permission by list.

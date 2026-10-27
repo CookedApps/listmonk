@@ -20,6 +20,7 @@ const (
 
 type Rule struct {
 	Field string `json:"field"`
+	Type  string `json:"type,omitempty"`
 	Op    string `json:"op"`
 	Value any    `json:"value"`
 }
@@ -33,12 +34,22 @@ var (
 	reAttribKey = regexp.MustCompile(`^[\w.\- ]{1,100}$`)
 	reDate      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
+	numericPattern = `^\s*-?\d+(\.\d+)?\s*$`
+	isoDatePattern = `^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?)?$`
+
 	textOps   = ops("eq", "neq", "contains", "not_contains", "one_of")
 	statusOps = ops("eq", "neq", "one_of")
 	dateOps   = ops("before", "after", "in_last_days")
 	attribOps = ops("eq", "neq", "contains", "not_contains", "one_of", "gt", "lt", "is_set", "not_set")
 	listOps   = ops("in", "not_in")
-	campOps   = ops("received", "not_received", "opened", "not_opened")
+
+	typedAttribOps = map[string]map[string]struct{}{
+		"text":   ops("eq", "neq", "contains", "not_contains", "one_of", "is_set", "not_set"),
+		"number": ops("eq", "neq", "gt", "gte", "lt", "lte", "is_set", "not_set"),
+		"bool":   ops("is_true", "is_not_true"),
+		"date":   ops("in_last_days", "not_in_last_days", "before", "after", "is_set", "not_set"),
+	}
+	campOps = ops("received", "not_received", "opened", "not_opened")
 
 	subscriberStatuses = ops("enabled", "disabled", "blocklisted")
 )
@@ -109,6 +120,8 @@ func compileRule(r Rule) (string, error) {
 		return compileStatus(r)
 	case r.Field == "created_at" || r.Field == "updated_at":
 		return compileDate("subscribers."+r.Field, r)
+	case strings.HasPrefix(r.Field, "attribs.") && r.Type != "":
+		return compileTypedAttrib(strings.TrimPrefix(r.Field, "attribs."), r)
 	case strings.HasPrefix(r.Field, "attribs."):
 		return compileAttrib(strings.TrimPrefix(r.Field, "attribs."), r)
 	case r.Field == "list":
@@ -222,6 +235,99 @@ func compileAttrib(key string, r Rule) (string, error) {
 	return compileText(text, Rule{Field: r.Field, Op: r.Op, Value: r.Value}, textOps)
 }
 
+func compileTypedAttrib(key string, r Rule) (string, error) {
+	if !reAttribKey.MatchString(key) {
+		return "", fmt.Errorf("invalid attribute key '%s'", key)
+	}
+	allowed, ok := typedAttribOps[r.Type]
+	if !ok {
+		return "", fmt.Errorf("invalid attribute type '%s'", r.Type)
+	}
+	if _, ok := allowed[r.Op]; !ok {
+		return "", fmt.Errorf("invalid operator '%s' for %s attribute", r.Op, r.Type)
+	}
+
+	text := "subscribers.attribs->>" + quote(key)
+	node := "subscribers.attribs->" + quote(key)
+
+	switch r.Op {
+	case "is_set":
+		return "(" + node + " IS NOT NULL AND " + node + " != 'null'::JSONB)", nil
+	case "not_set":
+		return "(" + node + " IS NULL OR " + node + " = 'null'::JSONB)", nil
+	case "is_true":
+		return "(" + text + " = 'true')", nil
+	case "is_not_true":
+		return "(" + text + " IS DISTINCT FROM 'true')", nil
+	}
+
+	switch r.Type {
+	case "number":
+		return compileNumber(text, node, r)
+	case "date":
+		return compileAttribDate(text, node, r)
+	}
+
+	switch r.Op {
+	case "neq":
+		v, err := stringValue(r.Value)
+		if err != nil {
+			return "", err
+		}
+		return "(" + text + " IS DISTINCT FROM " + quote(v) + ")", nil
+	case "not_contains":
+		v, err := stringValue(r.Value)
+		if err != nil {
+			return "", err
+		}
+		return "(COALESCE(" + text + ", '') NOT ILIKE " + quote("%"+escapeLike(v)+"%") + ")", nil
+	}
+
+	return compileText(text, Rule{Field: r.Field, Op: r.Op, Value: r.Value}, textOps)
+}
+
+func compileNumber(text, node string, r Rule) (string, error) {
+	n, err := floatValue(r.Value)
+	if err != nil {
+		return "", err
+	}
+
+	num := "(CASE WHEN jsonb_typeof(" + node + ") = 'number' THEN (" + text + ")::NUMERIC" +
+		" WHEN jsonb_typeof(" + node + ") = 'string' AND " + text + " ~ " + quote(numericPattern) + " THEN (" + text + ")::NUMERIC END)"
+	val := strconv.FormatFloat(n, 'f', -1, 64)
+	if r.Op == "neq" {
+		return "(" + num + " IS DISTINCT FROM " + val + ")", nil
+	}
+
+	return "(" + num + cmp(r.Op) + val + ")", nil
+}
+
+func compileAttribDate(text, node string, r Rule) (string, error) {
+	date := "(CASE WHEN jsonb_typeof(" + node + ") = 'string' AND " + text + " ~ " + quote(isoDatePattern) +
+		" AND pg_input_is_valid(" + text + ", 'timestamptz') THEN (" + text + ")::TIMESTAMPTZ END)"
+
+	if r.Op == "in_last_days" || r.Op == "not_in_last_days" {
+		n, err := intValue(r.Value)
+		if err != nil || n < 0 {
+			return "", errors.New("days must be a positive number")
+		}
+		op := " >= "
+		if r.Op == "not_in_last_days" {
+			op = " < "
+		}
+		return fmt.Sprintf("(%s%sNOW() - INTERVAL '%d days')", date, op, n), nil
+	}
+
+	v, err := stringValue(r.Value)
+	if err != nil || !reDate.MatchString(v) {
+		return "", errors.New("date must be YYYY-MM-DD")
+	}
+	if r.Op == "before" {
+		return "(" + date + " < " + quote(v) + ")", nil
+	}
+	return "(" + date + " >= " + quote(v) + ")", nil
+}
+
 func compileList(r Rule) (string, error) {
 	if _, ok := listOps[r.Op]; !ok {
 		return "", fmt.Errorf("invalid operator '%s' for list", r.Op)
@@ -268,6 +374,10 @@ func cmp(op string) string {
 		return " > "
 	case "lt":
 		return " < "
+	case "gte":
+		return " >= "
+	case "lte":
+		return " <= "
 	}
 	return " = "
 }

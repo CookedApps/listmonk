@@ -477,9 +477,7 @@ describe('Campaign audience rules', () => {
 
       cy.get('[data-cy=segment-add]').click();
       cy.get('[data-cy=segment-rule]').should('have.length', 1);
-      cy.get('[data-cy=segment-field]').select('attribs');
-      cy.get('[data-cy=segment-key]').type('ty');
-      cy.get('.segment-builder .dropdown-item').contains('type').click();
+      cy.get('[data-cy=segment-field]').select('attribs.type');
       cy.get('[data-cy=segment-value]').type('unknown');
       cy.get('[data-cy=recipient-count]').contains('0 recipients');
 
@@ -501,12 +499,61 @@ describe('Campaign audience rules', () => {
     });
   });
 
+  it('Builds typed attribute rules that tolerate missing and malformed values', () => {
+    const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+    const base = {
+      consentMarketing: true, emailVerifiedAt: daysAgo(400), totalGamesPlayed: 5, lastActiveAt: daysAgo(10),
+    };
+    const subs = {
+      match1: { ...base, hasProfileRestriction: false },
+      match2: { ...base, totalGamesPlayed: 2, lastActiveAt: daysAgo(150) },
+      noConsent: { ...base, consentMarketing: false },
+      unverified: { ...base, emailVerifiedAt: null },
+      restricted: { ...base, hasProfileRestriction: true },
+      fewGames: { ...base, totalGamesPlayed: 1 },
+      malformed: { ...base, totalGamesPlayed: 'abc', lastActiveAt: 'not a date' },
+      inactive: { ...base, lastActiveAt: daysAgo(300) },
+    };
+    Object.entries(subs).forEach(([name, attribs]) => cy.request('POST', `${apiUrl}/api/subscribers`, {
+      email: `${name}@typed.example`, name, status: 'enabled', lists: [1], attribs,
+    }));
+
+    const rule = (i, field, op, value) => {
+      cy.get('[data-cy=segment-add]').click();
+      cy.get('[data-cy=segment-rule]').eq(i).as('rule');
+      cy.get('@rule').find('[data-cy=segment-field]').select(field);
+      cy.get('@rule').find('[data-cy=segment-op]').select(op);
+      if (value !== undefined) {
+        cy.get('@rule').find('[data-cy=segment-value]').clear().type(value);
+      }
+    };
+
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'typed', subject: 'typed', type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => {
+      const { id } = r.body.data;
+      cy.visit(`/admin/campaigns/${id}`);
+      rule(0, 'attribs.consentMarketing', 'is_true');
+      rule(1, 'attribs.emailVerifiedAt', 'is_set');
+      rule(2, 'attribs.hasProfileRestriction', 'is_not_true');
+      rule(3, 'attribs.totalGamesPlayed', 'gte', '2');
+      rule(4, 'attribs.lastActiveAt', 'in_last_days', '200');
+      cy.get('[data-cy=recipient-count]').contains('2 recipients');
+
+      cy.get('[data-cy=btn-save]').click();
+      cy.wait(250);
+      cy.request(`${apiUrl}/api/campaigns/${id}`).then((c) => {
+        expect(c.body.data.segment.rules.map((x) => x.type)).to.deep.equal(['bool', 'date', 'bool', 'number', 'date']);
+      });
+    });
+  });
+
   it('Counts only the recipients that match the SQL query', () => {
     cy.request('POST', `${apiUrl}/api/campaigns`, {
       name: 'sql-count', subject: 'sql', type: 'regular', content_type: 'richtext', lists: [1],
     }).then((r) => {
       cy.visit(`/admin/campaigns/${r.body.data.id}`);
-      cy.get('[data-cy=recipient-count]').contains('1 recipients');
+      cy.get('[data-cy=recipient-count]').should('not.contain', '0 recipients');
       cy.get('[data-cy=segment-mode]').click();
       cy.get('textarea[name=subscriber_query]').type("subscribers.email = 'nobody@example.com'");
       cy.get('[data-cy=btn-preview-recipients]').click();

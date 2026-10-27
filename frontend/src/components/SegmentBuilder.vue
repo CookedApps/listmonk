@@ -8,46 +8,56 @@
       </b-select>
     </div>
 
-    <div v-for="(r, i) in rules" :key="r.id" class="rule columns is-variable is-1 is-multiline mb-0"
+    <div v-for="r in rules" :key="r.id" class="rule columns is-variable is-1 is-multiline mb-0"
       data-cy="segment-rule">
       <div class="column is-narrow">
-        <b-select v-model="r.field" size="is-small" :disabled="disabled" @input="onFieldChange(i)"
+        <b-select :value="r.field" size="is-small" :disabled="disabled" @input="(f) => onFieldChange(r, f)"
           data-cy="segment-field">
-          <option v-for="f in fields" :key="f" :value="f">{{ $t(`campaigns.segmentField.${f}`) }}</option>
+          <optgroup :label="$t('campaigns.segmentFieldsSubscriber')">
+            <option v-for="f in coreFields" :key="f" :value="f">{{ $t(`campaigns.segmentField.${f}`) }}</option>
+          </optgroup>
+          <optgroup v-if="attribFields.length" :label="$t('campaigns.segmentFieldsAttribs')">
+            <option v-for="a in attribFields" :key="a.field" :value="a.field">{{ a.key }}</option>
+          </optgroup>
         </b-select>
-      </div>
-      <div v-if="r.field === 'attribs'" class="column is-narrow">
-        <b-autocomplete v-model="r.key" size="is-small" :disabled="disabled" :data="attribKeysFor(r.key)"
-          open-on-focus :placeholder="$t('campaigns.segmentAttribKey')" @input="emit" data-cy="segment-key" />
       </div>
       <div class="column is-narrow">
         <b-select v-model="r.op" size="is-small" :disabled="disabled" @input="emit" data-cy="segment-op">
-          <option v-for="op in opsFor(r.field)" :key="op" :value="op">{{ $t(`campaigns.segmentOp.${op}`) }}</option>
+          <option v-for="op in opsFor(r)" :key="op" :value="op">{{ $t(`campaigns.segmentOp.${op}`) }}</option>
         </b-select>
       </div>
       <div class="column">
-        <b-select v-if="r.field === 'list'" v-model="r.value" expanded size="is-small" :disabled="disabled"
+        <template v-if="valueKind(r) === 'none'" />
+        <b-select v-else-if="valueKind(r) === 'list'" v-model="r.value" expanded size="is-small" :disabled="disabled"
           @input="emit" data-cy="segment-value">
           <option v-for="l in lists" :key="l.id" :value="l.id">{{ l.name }}</option>
         </b-select>
-        <b-select v-else-if="r.field === 'campaign'" v-model="r.value" expanded size="is-small" :disabled="disabled"
-          @input="emit" data-cy="segment-value">
+        <b-select v-else-if="valueKind(r) === 'campaign'" v-model="r.value" expanded size="is-small"
+          :disabled="disabled" @input="emit" data-cy="segment-value">
           <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
         </b-select>
-        <b-select v-else-if="r.field === 'status' && r.op !== 'one_of'" v-model="r.value" expanded size="is-small"
+        <b-select v-else-if="valueKind(r) === 'status'" v-model="r.value" expanded size="is-small"
           :disabled="disabled" @input="emit" data-cy="segment-value">
           <option v-for="s in statuses" :key="s" :value="s">{{ $t(`subscribers.status.${s}`) }}</option>
         </b-select>
-        <span v-else-if="r.op === 'is_set' || r.op === 'not_set'" />
-        <b-input v-else-if="isNumeric(r)" v-model.number="r.value" type="number" size="is-small" :disabled="disabled"
-          @input="emit" data-cy="segment-value" />
-        <b-input v-else-if="isDate(r)" v-model="r.value" type="date" size="is-small" :disabled="disabled"
+        <b-field v-else-if="valueKind(r) === 'days'" class="days">
+          <b-input v-model.number="r.value" type="number" min="0" size="is-small" :disabled="disabled" @input="emit"
+            data-cy="segment-value" />
+          <p class="control">
+            <span class="button is-static is-small">
+              {{ r.op === 'not_in_last_days' ? $t('campaigns.segmentDaysAgo') : $t('campaigns.segmentDays') }}
+            </span>
+          </p>
+        </b-field>
+        <b-input v-else-if="valueKind(r) === 'number'" v-model.number="r.value" type="number" step="any"
+          size="is-small" :disabled="disabled" @input="emit" data-cy="segment-value" />
+        <b-input v-else-if="valueKind(r) === 'date'" v-model="r.value" type="date" size="is-small" :disabled="disabled"
           @input="emit" data-cy="segment-value" />
         <b-input v-else v-model="r.value" size="is-small" :disabled="disabled" @input="emit"
           :placeholder="r.op === 'one_of' ? 'a, b, c' : ''" data-cy="segment-value" />
       </div>
       <div class="column is-narrow">
-        <b-button size="is-small" icon-left="trash-can-outline" :disabled="disabled" @click="removeRule(i)"
+        <b-button size="is-small" icon-left="trash-can-outline" :disabled="disabled" @click="removeRule(r)"
           data-cy="segment-remove" />
       </div>
     </div>
@@ -76,15 +86,29 @@
 <script>
 import Vue from 'vue';
 
-const OPS = {
+const ATTRIB = 'attribs.';
+
+const CORE_OPS = {
   email: ['eq', 'neq', 'contains', 'not_contains', 'one_of'],
   name: ['eq', 'neq', 'contains', 'not_contains', 'one_of'],
   status: ['eq', 'neq', 'one_of'],
-  created_at: ['after', 'before', 'in_last_days'],
-  attribs: ['eq', 'neq', 'contains', 'not_contains', 'one_of', 'gt', 'lt', 'is_set', 'not_set'],
+  created_at: ['in_last_days', 'after', 'before'],
   list: ['in', 'not_in'],
   campaign: ['received', 'not_received', 'opened', 'not_opened'],
 };
+
+const ATTRIB_OPS = {
+  text: ['eq', 'neq', 'contains', 'not_contains', 'one_of', 'is_set', 'not_set'],
+  number: ['gte', 'lte', 'eq', 'neq', 'gt', 'lt', 'is_set', 'not_set'],
+  bool: ['is_true', 'is_not_true'],
+  date: ['in_last_days', 'not_in_last_days', 'after', 'before', 'is_set', 'not_set'],
+};
+
+const NO_VALUE_OPS = ['is_set', 'not_set', 'is_true', 'is_not_true'];
+
+/** Reports whether every rule of a segment has the value its operator needs. */
+export const isSegmentComplete = (seg) => !seg || seg.rules.every((r) => NO_VALUE_OPS.includes(r.op)
+  || (r.value !== null && r.value !== ''));
 
 let nextID = 1;
 
@@ -101,7 +125,7 @@ export default Vue.extend({
 
   data() {
     return {
-      fields: Object.keys(OPS),
+      coreFields: Object.keys(CORE_OPS),
       statuses: ['enabled', 'disabled', 'blocklisted'],
       match: 'all',
       rules: [],
@@ -109,42 +133,73 @@ export default Vue.extend({
     };
   },
 
+  computed: {
+    attribFields() {
+      const known = this.attribKeys.map((a) => ({ field: ATTRIB + a.key, key: a.key }));
+      const used = this.rules
+        .filter((r) => r.field.startsWith(ATTRIB) && !known.some((a) => a.field === r.field))
+        .map((r) => ({ field: r.field, key: r.field.slice(ATTRIB.length) }));
+      return [...known, ...used];
+    },
+  },
+
   methods: {
-    opsFor(field) {
-      return OPS[field] || [];
+    isAttrib(r) {
+      return r.field.startsWith(ATTRIB);
     },
 
-    attribKeysFor(typed) {
-      const q = (typed || '').toLowerCase();
-      return this.attribKeys.filter((k) => k.toLowerCase().includes(q));
+    opsFor(r) {
+      return this.isAttrib(r) ? ATTRIB_OPS[r.type] : CORE_OPS[r.field];
     },
 
-    isNumeric(r) {
-      return r.op === 'gt' || r.op === 'lt' || r.op === 'in_last_days';
+    valueKind(r) {
+      if (NO_VALUE_OPS.includes(r.op)) {
+        return 'none';
+      }
+      if (r.op === 'in_last_days' || r.op === 'not_in_last_days') {
+        return 'days';
+      }
+      if (r.op === 'before' || r.op === 'after') {
+        return 'date';
+      }
+      if (r.field === 'list' || r.field === 'campaign') {
+        return r.field;
+      }
+      if (r.field === 'status' && r.op !== 'one_of') {
+        return 'status';
+      }
+      return r.type === 'number' ? 'number' : 'text';
     },
 
-    isDate(r) {
-      return r.field === 'created_at' && r.op !== 'in_last_days';
+    detectedType(field) {
+      const a = this.attribKeys.find((k) => ATTRIB + k.key === field);
+      return a ? a.type : 'text';
+    },
+
+    defaultValue(r) {
+      return r.field === 'status' ? 'enabled' : '';
     },
 
     addRule(field, op) {
       nextID += 1;
-      this.rules.push({
-        id: nextID, field, key: '', op, value: field === 'status' ? 'enabled' : '',
-      });
+      const r = {
+        id: nextID, field, type: '', op, value: '',
+      };
+      r.value = this.defaultValue(r);
+      this.rules.push(r);
       this.emit();
     },
 
-    removeRule(i) {
-      this.rules.splice(i, 1);
+    removeRule(r) {
+      this.rules.splice(this.rules.indexOf(r), 1);
       this.emit();
     },
 
-    onFieldChange(i) {
-      const r = this.rules[i];
-      const [op] = this.opsFor(r.field);
-      r.op = op;
-      r.value = r.field === 'status' ? 'enabled' : '';
+    onFieldChange(r, field) {
+      const next = { ...r, field, type: field.startsWith(ATTRIB) ? this.detectedType(field) : '' };
+      [next.op] = this.opsFor(next);
+      next.value = this.defaultValue(next);
+      this.rules.splice(this.rules.indexOf(r), 1, next);
       this.emit();
     },
 
@@ -156,26 +211,29 @@ export default Vue.extend({
       return {
         match: this.match,
         rules: this.rules.map((r) => ({
-          field: r.field === 'attribs' ? `attribs.${r.key}` : r.field,
+          field: r.field,
+          ...(this.isAttrib(r) ? { type: r.type } : {}),
           op: r.op,
-          value: r.value === '' ? null : r.value,
+          value: r.value === '' || NO_VALUE_OPS.includes(r.op) ? null : r.value,
         })),
+      };
+    },
+
+    fromRule(r) {
+      nextID += 1;
+      const legacyType = r.op === 'gt' || r.op === 'lt' ? 'number' : 'text';
+      return {
+        id: nextID,
+        field: r.field,
+        type: r.field.startsWith(ATTRIB) ? r.type || legacyType : '',
+        op: r.op,
+        value: r.value === null || r.value === undefined ? '' : r.value,
       };
     },
 
     fromSegment(seg) {
       this.match = (seg && seg.match) || 'all';
-      this.rules = ((seg && seg.rules) || []).map((r) => {
-        nextID += 1;
-        const isAttrib = r.field.startsWith('attribs.');
-        return {
-          id: nextID,
-          field: isAttrib ? 'attribs' : r.field,
-          key: isAttrib ? r.field.slice('attribs.'.length) : '',
-          op: r.op,
-          value: r.value === null || r.value === undefined ? '' : r.value,
-        };
-      });
+      this.rules = ((seg && seg.rules) || []).map(this.fromRule);
     },
 
     emit() {

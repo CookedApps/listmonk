@@ -24,6 +24,12 @@ const (
 // Subscribers represents a slice of Subscriber.
 type Subscribers []Subscriber
 
+// SubscriberAttribKey is an attribute key with its detected value type: text, number, bool or date.
+type SubscriberAttribKey struct {
+	Key  string `db:"key" json:"key"`
+	Type string `db:"type" json:"type"`
+}
+
 // Subscriber represents an e-mail subscriber.
 type Subscriber struct {
 	Base
