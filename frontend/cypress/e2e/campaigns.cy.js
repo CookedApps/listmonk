@@ -503,6 +503,7 @@ describe('Campaign audience rules', () => {
     const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
     const base = {
       consentMarketing: true, emailVerifiedAt: daysAgo(400), totalGamesPlayed: 5, lastActiveAt: daysAgo(10),
+      pendingReward: null,
     };
     const subs = {
       match1: { ...base, hasProfileRestriction: false },
@@ -533,6 +534,10 @@ describe('Campaign audience rules', () => {
     }).then((r) => {
       const { id } = r.body.data;
       cy.visit(`/admin/campaigns/${id}`);
+      cy.get('[data-cy=segment-add]').click();
+      cy.get('[data-cy=segment-field] option[value="attribs.pendingReward"]').should('exist');
+      cy.get('[data-cy=segment-remove]').click();
+
       rule(0, 'attribs.consentMarketing', 'is_true');
       rule(1, 'attribs.emailVerifiedAt', 'is_set');
       rule(2, 'attribs.hasProfileRestriction', 'is_not_true');
