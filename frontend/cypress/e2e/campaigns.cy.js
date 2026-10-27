@@ -548,6 +548,40 @@ describe('Campaign audience rules', () => {
     });
   });
 
+  it('Builds a nested rule group', () => {
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'grouped', subject: 'grouped', type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => {
+      const { id } = r.body.data;
+      cy.visit(`/admin/campaigns/${id}`);
+
+      cy.get('[data-cy=segment-add-group]').click();
+      cy.get('[data-cy=segment-group] [data-cy=segment-rule]').eq(0).find('[data-cy=segment-value]').type('match1');
+      cy.get('[data-cy=segment-group-add]').click();
+      cy.get('[data-cy=segment-group] [data-cy=segment-rule]').eq(1).as('second');
+      cy.get('@second').find('[data-cy=segment-field]').select('name');
+      cy.get('@second').find('[data-cy=segment-op]').select('eq');
+      cy.get('@second').find('[data-cy=segment-value]').type('match1');
+
+      cy.get('[data-cy=segment-add]').click();
+      cy.get('.segment-builder > [data-cy=segment-rule]').find('[data-cy=segment-value]').type('match2');
+      cy.get('[data-cy=segment-match]').select('any');
+      cy.get('[data-cy=recipient-count]').contains('2 recipients');
+
+      cy.get('[data-cy=btn-save]').click();
+      cy.wait(250);
+      cy.request(`${apiUrl}/api/campaigns/${id}`).then((c) => {
+        expect(c.body.data.segment.rules[0].rules).to.have.length(2);
+        expect(c.body.data.subscriber_query).to.equal(
+          "((subscribers.email ILIKE '%match1%' AND subscribers.name = 'match1') OR subscribers.email ILIKE '%match2%')",
+        );
+      });
+
+      cy.reload();
+      cy.get('[data-cy=segment-group] [data-cy=segment-rule]').should('have.length', 2);
+    });
+  });
+
   it('Counts only the recipients that match the SQL query', () => {
     cy.request('POST', `${apiUrl}/api/campaigns`, {
       name: 'sql-count', subject: 'sql', type: 'regular', content_type: 'richtext', lists: [1],

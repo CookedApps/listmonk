@@ -403,7 +403,8 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import ListSelector from '../components/ListSelector.vue';
-import SegmentBuilder, { isSegmentComplete } from '../components/SegmentBuilder.vue';
+import SegmentBuilder from '../components/SegmentBuilder.vue';
+import { isSegmentComplete } from '../segment';
 import Media from './Media.vue';
 import { rampCaps, recommendedRampDays } from '../rampup';
 

@@ -1,68 +1,42 @@
 <template>
   <div class="segment-builder">
-    <div v-if="rules.length > 1" class="match is-size-7 mb-2">
+    <div v-if="items.length > 1" class="match is-size-7 mb-2">
       {{ $t('campaigns.segmentMatch') }}
-      <b-select v-model="match" size="is-small" :disabled="disabled" @input="emit">
+      <b-select v-model="match" size="is-small" :disabled="disabled" @input="emit" data-cy="segment-match">
         <option value="all">{{ $t('campaigns.segmentMatchAll') }}</option>
         <option value="any">{{ $t('campaigns.segmentMatchAny') }}</option>
       </b-select>
     </div>
 
-    <div v-for="r in rules" :key="r.id" class="rule columns is-variable is-1 is-multiline mb-0"
-      data-cy="segment-rule">
-      <div class="column is-narrow">
-        <b-select :value="r.field" size="is-small" :disabled="disabled" @input="(f) => onFieldChange(r, f)"
-          data-cy="segment-field">
-          <optgroup :label="$t('campaigns.segmentFieldsSubscriber')">
-            <option v-for="f in coreFields" :key="f" :value="f">{{ $t(`campaigns.segmentField.${f}`) }}</option>
-          </optgroup>
-          <optgroup v-if="attribFields.length" :label="$t('campaigns.segmentFieldsAttribs')">
-            <option v-for="a in attribFields" :key="a.field" :value="a.field">{{ a.key }}</option>
-          </optgroup>
-        </b-select>
-      </div>
-      <div class="column is-narrow">
-        <b-select v-model="r.op" size="is-small" :disabled="disabled" @input="emit" data-cy="segment-op">
-          <option v-for="op in opsFor(r)" :key="op" :value="op">{{ $t(`campaigns.segmentOp.${op}`) }}</option>
-        </b-select>
-      </div>
-      <div class="column">
-        <template v-if="valueKind(r) === 'none'" />
-        <b-select v-else-if="valueKind(r) === 'list'" v-model="r.value" expanded size="is-small" :disabled="disabled"
-          @input="emit" data-cy="segment-value">
-          <option v-for="l in lists" :key="l.id" :value="l.id">{{ l.name }}</option>
-        </b-select>
-        <b-select v-else-if="valueKind(r) === 'campaign'" v-model="r.value" expanded size="is-small"
-          :disabled="disabled" @input="emit" data-cy="segment-value">
-          <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </b-select>
-        <b-select v-else-if="valueKind(r) === 'status'" v-model="r.value" expanded size="is-small"
-          :disabled="disabled" @input="emit" data-cy="segment-value">
-          <option v-for="s in statuses" :key="s" :value="s">{{ $t(`subscribers.status.${s}`) }}</option>
-        </b-select>
-        <b-field v-else-if="valueKind(r) === 'days'" class="days">
-          <b-input v-model.number="r.value" type="number" min="0" size="is-small" :disabled="disabled" @input="emit"
-            data-cy="segment-value" />
-          <p class="control">
-            <span class="button is-static is-small">
-              {{ r.op === 'not_in_last_days' ? $t('campaigns.segmentDaysAgo') : $t('campaigns.segmentDays') }}
-            </span>
-          </p>
-        </b-field>
-        <b-input v-else-if="valueKind(r) === 'number'" v-model.number="r.value" type="number" step="any"
-          size="is-small" :disabled="disabled" @input="emit" data-cy="segment-value" />
-        <b-input v-else-if="valueKind(r) === 'date'" v-model="r.value" type="date" size="is-small" :disabled="disabled"
-          @input="emit" data-cy="segment-value" />
-        <b-input v-else v-model="r.value" size="is-small" :disabled="disabled" @input="emit"
-          :placeholder="r.op === 'one_of' ? 'a, b, c' : ''" data-cy="segment-value" />
-      </div>
-      <div class="column is-narrow">
-        <b-button size="is-small" icon-left="trash-can-outline" :disabled="disabled" @click="removeRule(r)"
-          data-cy="segment-remove" />
-      </div>
-    </div>
+    <template v-for="item in items">
+      <div v-if="item.rules" :key="item.id" class="group mb-3" data-cy="segment-group">
+        <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
+          <span class="match is-size-7">
+            {{ $t('campaigns.segmentMatch') }}
+            <b-select v-model="item.match" size="is-small" :disabled="disabled" @input="emit"
+              data-cy="segment-group-match">
+              <option value="all">{{ $t('campaigns.segmentMatchAll') }}</option>
+              <option value="any">{{ $t('campaigns.segmentMatchAny') }}</option>
+            </b-select>
+          </span>
+          <b-button size="is-small" icon-left="trash-can-outline" :disabled="disabled" @click="remove(items, item)"
+            data-cy="segment-group-remove" />
+        </div>
 
-    <p v-if="rules.length === 0" class="is-size-7 has-text-grey mb-2">
+        <segment-rule v-for="r in item.rules" :key="r.id" :value="r" v-bind="ruleProps"
+          @input="(next) => replace(item.rules, r, next)" @remove="removeFromGroup(item, r)" />
+
+        <b-button size="is-small" icon-left="plus" :disabled="disabled" @click="addToGroup(item)"
+          data-cy="segment-group-add">
+          {{ $t('campaigns.segmentAddRule') }}
+        </b-button>
+      </div>
+
+      <segment-rule v-else :key="item.id" :value="item" v-bind="ruleProps"
+        @input="(next) => replace(items, item, next)" @remove="remove(items, item)" />
+    </template>
+
+    <p v-if="items.length === 0" class="is-size-7 has-text-grey mb-2">
       {{ $t('campaigns.segmentNoRules') }}
     </p>
 
@@ -70,6 +44,9 @@
       <b-button size="is-small" icon-left="plus" :disabled="disabled" @click="addRule('email', 'contains')"
         data-cy="segment-add">
         {{ $t('campaigns.segmentAddRule') }}
+      </b-button>
+      <b-button size="is-small" icon-left="plus" :disabled="disabled" @click="addGroup" data-cy="segment-add-group">
+        {{ $t('campaigns.segmentAddGroup') }}
       </b-button>
       <b-button size="is-small" icon-left="account-check-outline" :disabled="disabled"
         @click="addRule('campaign', 'received')" data-cy="segment-same-as">
@@ -85,35 +62,20 @@
 
 <script>
 import Vue from 'vue';
-
-const ATTRIB = 'attribs.';
-
-const CORE_OPS = {
-  email: ['eq', 'neq', 'contains', 'not_contains', 'one_of'],
-  name: ['eq', 'neq', 'contains', 'not_contains', 'one_of'],
-  status: ['eq', 'neq', 'one_of'],
-  created_at: ['in_last_days', 'after', 'before'],
-  list: ['in', 'not_in'],
-  campaign: ['received', 'not_received', 'opened', 'not_opened'],
-};
-
-const ATTRIB_OPS = {
-  text: ['eq', 'neq', 'contains', 'not_contains', 'one_of', 'is_set', 'not_set'],
-  number: ['gte', 'lte', 'eq', 'neq', 'gt', 'lt', 'is_set', 'not_set'],
-  bool: ['is_true', 'is_not_true'],
-  date: ['in_last_days', 'not_in_last_days', 'after', 'before', 'is_set', 'not_set'],
-};
-
-const NO_VALUE_OPS = ['is_set', 'not_set', 'is_true', 'is_not_true'];
-
-/** Reports whether every rule of a segment has the value its operator needs. */
-export const isSegmentComplete = (seg) => !seg || seg.rules.every((r) => NO_VALUE_OPS.includes(r.op)
-  || (r.value !== null && r.value !== ''));
+import SegmentRule from './SegmentRule.vue';
+import { ATTRIB, NO_VALUE_OPS } from '../segment';
 
 let nextID = 1;
 
+const newID = () => {
+  nextID += 1;
+  return nextID;
+};
+
 export default Vue.extend({
   name: 'SegmentBuilder',
+
+  components: { SegmentRule },
 
   props: {
     value: { type: Object, default: null },
@@ -125,105 +87,73 @@ export default Vue.extend({
 
   data() {
     return {
-      coreFields: Object.keys(CORE_OPS),
-      statuses: ['enabled', 'disabled', 'blocklisted'],
       match: 'all',
-      rules: [],
+      items: [],
       lastEmitted: null,
     };
   },
 
   computed: {
-    attribFields() {
-      const known = this.attribKeys.map((a) => ({ field: ATTRIB + a.key, key: a.key }));
-      const used = this.rules
-        .filter((r) => r.field.startsWith(ATTRIB) && !known.some((a) => a.field === r.field))
-        .map((r) => ({ field: r.field, key: r.field.slice(ATTRIB.length) }));
-      return [...known, ...used];
+    ruleProps() {
+      return {
+        lists: this.lists, campaigns: this.campaigns, attribKeys: this.attribKeys, disabled: this.disabled,
+      };
     },
   },
 
   methods: {
-    isAttrib(r) {
-      return r.field.startsWith(ATTRIB);
-    },
-
-    opsFor(r) {
-      return this.isAttrib(r) ? ATTRIB_OPS[r.type] : CORE_OPS[r.field];
-    },
-
-    valueKind(r) {
-      if (NO_VALUE_OPS.includes(r.op)) {
-        return 'none';
-      }
-      if (r.op === 'in_last_days' || r.op === 'not_in_last_days') {
-        return 'days';
-      }
-      if (r.op === 'before' || r.op === 'after') {
-        return 'date';
-      }
-      if (r.field === 'list' || r.field === 'campaign') {
-        return r.field;
-      }
-      if (r.field === 'status' && r.op !== 'one_of') {
-        return 'status';
-      }
-      return r.type === 'number' ? 'number' : 'text';
-    },
-
-    detectedType(field) {
-      const a = this.attribKeys.find((k) => ATTRIB + k.key === field);
-      return a ? a.type : 'text';
-    },
-
-    defaultValue(r) {
-      return r.field === 'status' ? 'enabled' : '';
+    newRule(field, op) {
+      return {
+        id: newID(), field, type: '', op, value: field === 'status' ? 'enabled' : '',
+      };
     },
 
     addRule(field, op) {
-      nextID += 1;
-      const r = {
-        id: nextID, field, type: '', op, value: '',
-      };
-      r.value = this.defaultValue(r);
-      this.rules.push(r);
+      this.items.push(this.newRule(field, op));
       this.emit();
     },
 
-    removeRule(r) {
-      this.rules.splice(this.rules.indexOf(r), 1);
+    addGroup() {
+      this.items.push({ id: newID(), match: 'all', rules: [this.newRule('email', 'contains')] });
       this.emit();
     },
 
-    onFieldChange(r, field) {
-      const next = { ...r, field, type: field.startsWith(ATTRIB) ? this.detectedType(field) : '' };
-      [next.op] = this.opsFor(next);
-      next.value = this.defaultValue(next);
-      this.rules.splice(this.rules.indexOf(r), 1, next);
+    addToGroup(group) {
+      group.rules.push(this.newRule('email', 'contains'));
       this.emit();
     },
 
-    toSegment() {
-      if (this.rules.length === 0) {
-        return null;
+    replace(list, old, next) {
+      list.splice(list.indexOf(old), 1, next);
+      this.emit();
+    },
+
+    remove(list, item) {
+      list.splice(list.indexOf(item), 1);
+      this.emit();
+    },
+
+    removeFromGroup(group, r) {
+      if (group.rules.length === 1) {
+        this.remove(this.items, group);
+        return;
       }
+      this.remove(group.rules, r);
+    },
 
+    ruleOut(r) {
       return {
-        match: this.match,
-        rules: this.rules.map((r) => ({
-          field: r.field,
-          ...(this.isAttrib(r) ? { type: r.type } : {}),
-          op: r.op,
-          value: r.value === '' || NO_VALUE_OPS.includes(r.op) ? null : r.value,
-        })),
+        field: r.field,
+        ...(r.field.startsWith(ATTRIB) ? { type: r.type } : {}),
+        op: r.op,
+        value: r.value === '' || NO_VALUE_OPS.includes(r.op) ? null : r.value,
       };
     },
 
-    fromRule(r) {
-      nextID += 1;
+    ruleIn(r) {
       const legacyType = r.op === 'gt' || r.op === 'lt' ? 'number' : 'text';
       return {
-        id: nextID,
+        id: newID(),
         field: r.field,
         type: r.field.startsWith(ATTRIB) ? r.type || legacyType : '',
         op: r.op,
@@ -231,9 +161,22 @@ export default Vue.extend({
       };
     },
 
+    toSegment() {
+      if (this.items.length === 0) {
+        return null;
+      }
+
+      return {
+        match: this.match,
+        rules: this.items.map((i) => (i.rules ? { match: i.match, rules: i.rules.map(this.ruleOut) } : this.ruleOut(i))),
+      };
+    },
+
     fromSegment(seg) {
       this.match = (seg && seg.match) || 'all';
-      this.rules = ((seg && seg.rules) || []).map(this.fromRule);
+      this.items = ((seg && seg.rules) || []).map((i) => (i.rules
+        ? { id: newID(), match: i.match || 'all', rules: i.rules.map(this.ruleIn) }
+        : this.ruleIn(i)));
     },
 
     emit() {

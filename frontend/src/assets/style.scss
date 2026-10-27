@@ -890,15 +890,20 @@ section.import {
 /* Campaign audience rule builder */
 section.campaign .segment-builder {
   .rule .column:not(.is-narrow) {
-    min-width: 12em;
+    min-width: 0;
   }
 
   .select {
     max-width: 20em;
   }
 
-  .autocomplete {
-    width: 12em;
+  .group {
+    border-left: 3px solid $grey-lighter;
+    padding-left: 0.75rem;
+  }
+
+  .days .input {
+    width: 6em;
   }
 }
 

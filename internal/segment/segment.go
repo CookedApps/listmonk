@@ -16,13 +16,18 @@ const (
 	MatchAny = "any"
 
 	maxRules = 50
+	maxDepth = 2
 )
 
+// Rule is a condition on a field, or a group of rules when Rules is set.
 type Rule struct {
-	Field string `json:"field"`
+	Field string `json:"field,omitempty"`
 	Type  string `json:"type,omitempty"`
-	Op    string `json:"op"`
-	Value any    `json:"value"`
+	Op    string `json:"op,omitempty"`
+	Value any    `json:"value,omitempty"`
+
+	Match string `json:"match,omitempty"`
+	Rules []Rule `json:"rules,omitempty"`
 }
 
 type Segment struct {
@@ -77,11 +82,52 @@ func Parse(b []byte) (Segment, error) {
 	if s.Match != MatchAll && s.Match != MatchAny {
 		return s, fmt.Errorf("invalid match '%s'", s.Match)
 	}
-	if len(s.Rules) > maxRules {
+
+	n, err := countRules(s.Rules, 1)
+	if err != nil {
+		return s, err
+	}
+	if n > maxRules {
 		return s, fmt.Errorf("too many rules (max %d)", maxRules)
 	}
 
 	return s, nil
+}
+
+func (r Rule) isGroup() bool {
+	return r.Rules != nil || r.Match != ""
+}
+
+func countRules(rules []Rule, depth int) (int, error) {
+	n := 0
+	for i := range rules {
+		r := &rules[i]
+		if !r.isGroup() {
+			n++
+			continue
+		}
+
+		if depth >= maxDepth {
+			return 0, fmt.Errorf("groups can be nested %d level deep at most", maxDepth-1)
+		}
+		if len(r.Rules) == 0 {
+			return 0, errors.New("a group needs at least one rule")
+		}
+		if r.Match == "" {
+			r.Match = MatchAll
+		}
+		if r.Match != MatchAll && r.Match != MatchAny {
+			return 0, fmt.Errorf("invalid match '%s'", r.Match)
+		}
+
+		c, err := countRules(r.Rules, depth+1)
+		if err != nil {
+			return 0, err
+		}
+		n += c
+	}
+
+	return n, nil
 }
 
 // IsEmpty reports whether the segment has no rules.
@@ -95,9 +141,13 @@ func (s Segment) Compile() (string, error) {
 		return "", nil
 	}
 
-	parts := make([]string, 0, len(s.Rules))
-	for i, r := range s.Rules {
-		expr, err := compileRule(r)
+	return compileGroup(s.Match, s.Rules)
+}
+
+func compileGroup(match string, rules []Rule) (string, error) {
+	parts := make([]string, 0, len(rules))
+	for i, r := range rules {
+		expr, err := compileItem(r)
 		if err != nil {
 			return "", fmt.Errorf("rule %d: %v", i+1, err)
 		}
@@ -105,11 +155,18 @@ func (s Segment) Compile() (string, error) {
 	}
 
 	joiner := " AND "
-	if s.Match == MatchAny {
+	if match == MatchAny {
 		joiner = " OR "
 	}
 
 	return "(" + strings.Join(parts, joiner) + ")", nil
+}
+
+func compileItem(r Rule) (string, error) {
+	if r.isGroup() {
+		return compileGroup(r.Match, r.Rules)
+	}
+	return compileRule(r)
 }
 
 func compileRule(r Rule) (string, error) {

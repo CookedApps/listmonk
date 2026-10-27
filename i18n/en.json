@@ -108,6 +108,7 @@
     "campaigns.segmentSwitchConfirm": "Switching the mode drops the current audience filter. Continue?",
     "campaigns.segmentNoRules": "No rules yet. Everyone on the selected lists receives this campaign.",
     "campaigns.segmentAddRule": "Add rule",
+    "campaigns.segmentAddGroup": "Add group",
     "campaigns.segmentSameAs": "Same recipients as…",
     "campaigns.segmentExclude": "Exclude recipients of…",
     "campaigns.segmentMatch": "Match",

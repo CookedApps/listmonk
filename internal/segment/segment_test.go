@@ -133,3 +133,30 @@ func TestTypedAttribsReject(t *testing.T) {
 		}
 	}
 }
+
+func TestGroups(t *testing.T) {
+	doc := `{"match":"any","rules":[
+		{"match":"all","rules":[{"field":"email","op":"contains","value":"a"},{"field":"name","op":"eq","value":"b"}]},
+		{"field":"status","op":"eq","value":"enabled"}]}`
+	want := `((subscribers.email ILIKE '%a%' AND subscribers.name = 'b') OR subscribers.status = 'enabled')`
+	if got := compile(t, doc); got != want {
+		t.Errorf("\n got: %s\nwant: %s", got, want)
+	}
+
+	if got := compile(t, `{"rules":[{"rules":[{"field":"email","op":"eq","value":"x"}]}]}`); got != `((subscribers.email = 'x'))` {
+		t.Errorf("group without match should default to all: %s", got)
+	}
+}
+
+func TestGroupsReject(t *testing.T) {
+	for _, doc := range []string{
+		`{"rules":[{"match":"all","rules":[]}]}`,
+		`{"rules":[{"match":"all","rules":[{"match":"all","rules":[{"field":"email","op":"eq","value":"x"}]}]}]}`,
+		`{"rules":[{"match":"some","rules":[{"field":"email","op":"eq","value":"x"}]}]}`,
+		`{"rules":[{"match":"all","rules":[` + strings.Repeat(`{"field":"email","op":"eq","value":"x"},`, 50) + `{"field":"email","op":"eq","value":"x"}]}]}`,
+	} {
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Errorf("%.80s parsed, want an error", doc)
+		}
+	}
+}
