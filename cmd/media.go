@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"mime/multipart"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/disintegration/imaging"
+	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -42,7 +43,9 @@ func (a *App) UploadMedia(c echo.Context) error {
 		// Naive check for content type and extension.
 		ext         = strings.TrimPrefix(strings.ToLower(filepath.Ext(file.Filename)), ".")
 		contentType = file.Header.Get("Content-Type")
+		fileName    = file.Filename
 	)
+	var body io.ReadSeeker = src
 
 	// Validate file extension.
 	if !inArray("*", a.cfg.MediaUpload.Extensions) {
@@ -52,8 +55,18 @@ func (a *App) UploadMedia(c echo.Context) error {
 		}
 	}
 
+	if ext == "webp" {
+		data, newExt, newType, err := media.ConvertWebP(src)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest,
+				a.i18n.Ts("media.invalidFile", "error", err.Error()))
+		}
+		fileName = strings.TrimSuffix(fileName, filepath.Ext(fileName)) + "." + newExt
+		ext, contentType, body = newExt, newType, bytes.NewReader(data)
+	}
+
 	// Sanitize the filename.
-	fName := makeFilename(file.Filename)
+	fName := makeFilename(fileName)
 
 	// If the filename already exists in the DB, make it unique by adding a random suffix.
 	if _, err := a.core.GetMedia(0, "", fName, a.media); err == nil {
@@ -67,7 +80,7 @@ func (a *App) UploadMedia(c echo.Context) error {
 	}
 
 	// Upload the file to the media store.
-	fName, err = a.media.Put(fName, contentType, src)
+	fName, err = a.media.Put(fName, contentType, body)
 	if err != nil {
 		a.log.Printf("error uploading file: %v", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
@@ -96,7 +109,13 @@ func (a *App) UploadMedia(c echo.Context) error {
 	// Create thumbnail from file for non-vector formats.
 	isImage := inArray(ext, imageExts)
 	if isImage {
-		thumbFile, wi, he, err := processImage(file)
+		if _, err := body.Seek(0, io.SeekStart); err != nil {
+			cleanUp = true
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				a.i18n.Ts("media.errorReadingFile", "error", err.Error()))
+		}
+
+		thumbFile, wi, he, err := processImage(body)
 		if err != nil {
 			cleanUp = true
 			a.log.Printf("error resizing image: %v", err)
@@ -207,15 +226,9 @@ func (a *App) ServeS3Media(c echo.Context) error {
 	return c.Stream(http.StatusOK, http.DetectContentType(b), bytes.NewReader(b))
 }
 
-// processImage reads the image file and returns thumbnail bytes and
+// processImage reads the image and returns thumbnail bytes and
 // the original image's width, and height.
-func processImage(file *multipart.FileHeader) (*bytes.Reader, int, int, error) {
-	src, err := file.Open()
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	defer src.Close()
-
+func processImage(src io.Reader) (*bytes.Reader, int, int, error) {
 	img, err := imaging.Decode(src)
 	if err != nil {
 		return nil, 0, 0, err
