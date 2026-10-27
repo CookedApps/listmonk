@@ -91,6 +91,14 @@ func (p *pipe) NextSubscribers() (bool, error) {
 		return false, nil
 	}
 
+	ids := make([]int, len(subs))
+	for i, s := range subs {
+		ids[i] = s.ID
+	}
+	if err := p.m.store.RecordCampaignSends(p.camp.ID, ids); err != nil {
+		p.m.log.Printf("error recording campaign sends (%s): %v", p.camp.Name, err)
+	}
+
 	// Is there a sliding window limit configured?
 	hasSliding := p.m.cfg.SlidingWindow &&
 		p.m.cfg.SlidingWindowRate > 0 &&

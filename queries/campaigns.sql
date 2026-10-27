@@ -468,6 +468,12 @@ UPDATE campaigns SET to_send = COALESCE((SELECT to_send FROM counts), 0), update
 WHERE id = $1
 RETURNING to_send;
 
+-- name: insert-campaign-sends
+-- Records the subscribers a campaign batch was handed to the messenger for.
+INSERT INTO campaign_sends (campaign_id, subscriber_id)
+    SELECT $1, UNNEST($2::INT[])
+    ON CONFLICT DO NOTHING;
+
 -- name: delete-campaign-views
 DELETE FROM campaign_views WHERE created_at < $1;
 

@@ -155,6 +155,15 @@ CREATE UNIQUE INDEX ON campaign_lists (campaign_id, list_id);
 DROP INDEX IF EXISTS idx_camp_lists_camp_id; CREATE INDEX idx_camp_lists_camp_id ON campaign_lists(campaign_id);
 DROP INDEX IF EXISTS idx_camp_lists_list_id; CREATE INDEX idx_camp_lists_list_id ON campaign_lists(list_id);
 
+DROP TABLE IF EXISTS campaign_sends CASCADE;
+CREATE TABLE campaign_sends (
+    campaign_id      INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    subscriber_id    INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, subscriber_id)
+);
+DROP INDEX IF EXISTS idx_camp_sends_sub_id; CREATE INDEX idx_camp_sends_sub_id ON campaign_sends(subscriber_id);
+
 DROP TABLE IF EXISTS campaign_views CASCADE;
 CREATE TABLE campaign_views (
     id               BIGSERIAL PRIMARY KEY,

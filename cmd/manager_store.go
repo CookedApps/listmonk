@@ -84,6 +84,12 @@ func (s *store) SetCampaignToSend(c *models.Campaign) (int, error) {
 	return s.core.SetCampaignFilteredToSend(c.ID, c.SubscriberQuery.String)
 }
 
+// RecordCampaignSends logs the subscribers a campaign batch was handed out to.
+func (s *store) RecordCampaignSends(campID int, subIDs []int) error {
+	_, err := s.queries.InsertCampaignSends.Exec(campID, pq.Array(subIDs))
+	return err
+}
+
 // GetCampaign fetches a campaign from the database.
 func (s *store) GetCampaign(campID int) (*models.Campaign, error) {
 	var out = &models.Campaign{}

@@ -89,6 +89,7 @@ type Queries struct {
 	NextCampaignSubscribersFiltered string     `query:"next-campaign-subscribers-filtered"`
 	CountCampaignRecipients         string     `query:"count-campaign-recipients"`
 	UpdateCampaignFilteredToSend    string     `query:"update-campaign-filtered-to-send"`
+	InsertCampaignSends             *sqlx.Stmt `query:"insert-campaign-sends"`
 	UpdateCampaign                  *sqlx.Stmt `query:"update-campaign"`
 	UpdateCampaignStatus            *sqlx.Stmt `query:"update-campaign-status"`
 	UpdateCampaignCounts            *sqlx.Stmt `query:"update-campaign-counts"`

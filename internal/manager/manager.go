@@ -55,6 +55,7 @@ type Store interface {
 	UpdateCampaignStatus(campID int, status string) error
 	UpdateCampaignCounts(campID int, toSend int, sent int, lastSubID int) error
 	SetCampaignToSend(c *models.Campaign) (int, error)
+	RecordCampaignSends(campID int, subIDs []int) error
 	CreateLink(url string) (string, error)
 	BlocklistSubscriber(id int64) error
 	DeleteSubscriber(id int64) error
