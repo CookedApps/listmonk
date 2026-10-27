@@ -95,6 +95,13 @@
                     <p class="is-size-7 has-text-grey mb-3">{{ $t('campaigns.segmentHelp') }}</p>
                     <segment-builder v-model="form.segment" :lists="lists.results || []" :campaigns="pastCampaigns"
                       :attrib-keys="attribKeys" :disabled="!canEdit" />
+                    <template v-if="form.segment && compiledQuery">
+                      <a href="#" class="is-size-7" @click.prevent="isSqlVisible = !isSqlVisible"
+                        data-cy="segment-show-sql">
+                        {{ isSqlVisible ? $t('campaigns.segmentHideSql') : $t('campaigns.segmentShowSql') }}
+                      </a>
+                      <pre v-if="isSqlVisible" class="is-size-7 mt-2" data-cy="segment-sql">{{ compiledQuery }}</pre>
+                    </template>
                   </template>
                   <template v-else>
                     <b-field :message="$t('campaigns.segmentSqlHelp')">
@@ -107,7 +114,11 @@
                     </b-button>
                   </template>
 
-                  <p v-if="recipientCount !== null" class="is-size-7 has-text-grey mt-2" data-cy="recipient-count">
+                  <p v-if="segmentMode === 'rules' && !isSegmentComplete" class="is-size-7 has-text-grey mt-2"
+                    data-cy="recipient-count">
+                    {{ $t('campaigns.segmentIncomplete') }}
+                  </p>
+                  <p v-else-if="recipientCount !== null" class="is-size-7 has-text-grey mt-2" data-cy="recipient-count">
                     {{ $t('campaigns.recipientCount', { num: $utils.formatNumber(recipientCount) }) }}
                   </p>
                 </div>
@@ -438,6 +449,8 @@ export default Vue.extend({
 
       // Transient count from the "Preview recipients" button for the segment query.
       recipientCount: null,
+      compiledQuery: '',
+      isSqlVisible: false,
 
       rampMode: 'auto',
       rampCustomDays: 3,
@@ -697,6 +710,7 @@ export default Vue.extend({
         return;
       }
       if (this.segmentMode === 'rules' && !this.isSegmentComplete) {
+        this.recipientCount = null;
         return;
       }
 
@@ -705,6 +719,7 @@ export default Vue.extend({
         ...this.segmentPayload,
       }).then((d) => {
         this.recipientCount = d.count;
+        this.compiledQuery = d.query;
       }).catch(() => {
         this.recipientCount = null;
       });
@@ -717,10 +732,12 @@ export default Vue.extend({
 
     onToggleSegmentMode() {
       const next = this.segmentMode === 'rules' ? 'sql' : 'rules';
-      const hasFilter = this.segmentMode === 'rules' ? !!this.form.segment : !!this.form.subscriberQuery;
+      const keepsRules = next === 'sql' && this.isSegmentComplete;
+      const hasFilter = this.segmentMode === 'rules' ? !!this.form.segment && !keepsRules : !!this.form.subscriberQuery;
       const apply = () => {
+        const rulesQuery = this.form.segment && keepsRules ? this.compiledQuery : '';
         this.form.segment = null;
-        this.form.subscriberQuery = next === 'sql' ? this.data.subscriberQuery || '' : '';
+        this.form.subscriberQuery = next === 'sql' ? rulesQuery || this.data.subscriberQuery || '' : '';
         this.segmentMode = next;
         this.recipientCount = null;
         if (next === 'rules') {

@@ -582,6 +582,28 @@ describe('Campaign audience rules', () => {
     });
   });
 
+  it('Shows a hint for incomplete rules, the generated SQL, and prefills SQL mode', () => {
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'sql-view', subject: 'sql-view', type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => {
+      cy.visit(`/admin/campaigns/${r.body.data.id}`);
+      cy.get('[data-cy=segment-add]').click();
+      cy.get('[data-cy=recipient-count]').contains('Complete the rules');
+      cy.get('[data-cy=segment-value]').type('match2');
+      cy.get('[data-cy=recipient-count]').contains('1 recipients');
+
+      const sql = "(subscribers.email ILIKE '%match2%')";
+      cy.get('[data-cy=segment-show-sql]').click();
+      cy.get('[data-cy=segment-sql]').should('have.text', sql);
+
+      cy.get('[data-cy=segment-mode]').click();
+      cy.get('.modal').should('not.exist');
+      cy.get('textarea[name=subscriber_query]').should('have.value', sql);
+      cy.get('[data-cy=btn-preview-recipients]').click();
+      cy.get('[data-cy=recipient-count]').contains('1 recipients');
+    });
+  });
+
   it('Counts only the recipients that match the SQL query', () => {
     cy.request('POST', `${apiUrl}/api/campaigns`, {
       name: 'sql-count', subject: 'sql', type: 'regular', content_type: 'richtext', lists: [1],

@@ -453,8 +453,9 @@ func (a *App) PreviewCampaignRecipients(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{struct {
-		Count int `json:"count"`
-	}{count}})
+		Count int    `json:"count"`
+		Query string `json:"query"`
+	}{count, q}})
 }
 
 // UpdateCampaignStatus handles campaign status modification.

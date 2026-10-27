@@ -907,6 +907,11 @@ section.campaign .segment-builder {
   }
 }
 
+section.campaign .audience pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Campaign ramp-up preview */
 section.campaign .ramp-preview {
   .slice {
