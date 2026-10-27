@@ -8,6 +8,12 @@ SELECT * FROM subscribers WHERE
         WHEN $3 != '' THEN email = $3
     END;
 
+-- name: get-subscriber-attrib-keys
+-- Top-level attribute keys sampled from the newest subscribers, for the segment builder.
+SELECT DISTINCT JSONB_OBJECT_KEYS(attribs) AS key
+    FROM (SELECT attribs FROM subscribers WHERE attribs != '{}' ORDER BY id DESC LIMIT 1000) s
+    ORDER BY key;
+
 -- name: has-subscriber-list
 -- Used for checking access permission by list.
 SELECT s.id AS subscriber_id,

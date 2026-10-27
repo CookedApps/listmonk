@@ -81,20 +81,35 @@
                 <list-selector v-model="form.lists" :selected="form.lists" :all="lists.results" :disabled="!canEdit"
                   :label="$t('globals.terms.lists')" :placeholder="$t('campaigns.sendToLists')" />
 
-                <b-field v-if="form.messenger.startsWith('email') && $can('subscribers:sql_query')"
-                  :label="$t('campaigns.segment')" label-position="on-border" :message="$t('campaigns.segmentHelp')">
-                  <b-input v-model="form.subscriberQuery" type="textarea" :disabled="!canEdit" name="subscriber_query"
-                    placeholder="subscribers.attribs->>'city' = 'Berlin'" />
-                </b-field>
-                <div v-if="form.messenger.startsWith('email') && $can('subscribers:sql_query') && form.subscriberQuery"
-                  class="mb-4">
-                  <b-button icon-left="account-search-outline" :disabled="form.lists.length === 0"
-                    @click="onPreviewRecipients">
-                    {{ $t('campaigns.previewRecipients') }}
-                  </b-button>
-                  <span v-if="recipientCount !== null" class="ml-2 has-text-grey">
-                    {{ $t('campaigns.recipientCount', { num: recipientCount }) }}
-                  </span>
+                <div v-if="form.messenger.startsWith('email')" class="audience box mb-5" data-cy="audience">
+                  <div class="is-flex is-justify-content-space-between mb-2">
+                    <span class="label mb-0">{{ $t('campaigns.segment') }}</span>
+                    <a v-if="$can('subscribers:sql_query') && canEdit" href="#" class="is-size-7"
+                      @click.prevent="onToggleSegmentMode" data-cy="segment-mode">
+                      <b-icon icon="cog-outline" size="is-small" />
+                      {{ segmentMode === 'rules' ? $t('campaigns.segmentModeSql') : $t('campaigns.segmentModeRules') }}
+                    </a>
+                  </div>
+
+                  <template v-if="segmentMode === 'rules'">
+                    <p class="is-size-7 has-text-grey mb-3">{{ $t('campaigns.segmentHelp') }}</p>
+                    <segment-builder v-model="form.segment" :lists="lists.results || []" :campaigns="pastCampaigns"
+                      :attrib-keys="attribKeys" :disabled="!canEdit" />
+                  </template>
+                  <template v-else>
+                    <b-field :message="$t('campaigns.segmentSqlHelp')">
+                      <b-input v-model="form.subscriberQuery" type="textarea" :disabled="!canEdit"
+                        name="subscriber_query" placeholder="subscribers.attribs->>'city' = 'Berlin'" />
+                    </b-field>
+                    <b-button v-if="form.subscriberQuery" size="is-small" icon-left="account-search-outline"
+                      :disabled="form.lists.length === 0" @click="onPreviewRecipients">
+                      {{ $t('campaigns.previewRecipients') }}
+                    </b-button>
+                  </template>
+
+                  <p v-if="recipientCount !== null" class="is-size-7 has-text-grey mt-2" data-cy="recipient-count">
+                    {{ $t('campaigns.recipientCount', { num: $utils.formatNumber(recipientCount) }) }}
+                  </p>
                 </div>
 
                 <div class="columns">
@@ -388,12 +403,14 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import ListSelector from '../components/ListSelector.vue';
+import SegmentBuilder from '../components/SegmentBuilder.vue';
 import Media from './Media.vue';
 import { rampCaps, recommendedRampDays } from '../rampup';
 
 export default Vue.extend({
   components: {
     ListSelector,
+    SegmentBuilder,
     Editor,
     Media,
     CopyText,
@@ -424,6 +441,11 @@ export default Vue.extend({
       rampMode: 'auto',
       rampCustomDays: 3,
 
+      segmentMode: 'rules',
+      attribKeys: [],
+      pastCampaigns: [],
+      previewTimer: null,
+
       data: {},
 
       // IDs from ?list_id query param.
@@ -441,6 +463,7 @@ export default Vue.extend({
         messenger: 'email',
         lists: [],
         subscriberQuery: '',
+        segment: null,
         tags: [],
         sendAt: null,
         content: {
@@ -597,6 +620,8 @@ export default Vue.extend({
         };
         this.isAttachFieldVisible = this.form.media.length > 0;
 
+        this.segmentMode = !data.segment && data.subscriberQuery ? 'sql' : 'rules';
+
         if (data.rampDays === null || data.rampDays === undefined) {
           this.rampMode = 'auto';
         } else if (data.rampDays === 0) {
@@ -646,7 +671,7 @@ export default Vue.extend({
         name: this.form.name,
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
-        subscriber_query: this.form.subscriberQuery || null,
+        ...this.segmentPayload,
         ramp_days: this.rampDaysValue,
         from_email: this.form.fromEmail,
         content_type: this.form.content.contentType,
@@ -670,13 +695,43 @@ export default Vue.extend({
         this.recipientCount = null;
         return;
       }
+      if (this.segmentMode === 'rules' && !this.isSegmentComplete) {
+        return;
+      }
 
       this.$api.previewCampaignRecipients({
         lists: this.form.lists.map((l) => l.id),
-        query: this.form.subscriberQuery,
+        ...this.segmentPayload,
       }).then((d) => {
         this.recipientCount = d.count;
+      }).catch(() => {
+        this.recipientCount = null;
       });
+    },
+
+    schedulePreviewRecipients() {
+      clearTimeout(this.previewTimer);
+      this.previewTimer = setTimeout(() => this.onPreviewRecipients(), 400);
+    },
+
+    onToggleSegmentMode() {
+      const next = this.segmentMode === 'rules' ? 'sql' : 'rules';
+      const hasFilter = this.segmentMode === 'rules' ? !!this.form.segment : !!this.form.subscriberQuery;
+      const apply = () => {
+        this.form.segment = null;
+        this.form.subscriberQuery = next === 'sql' ? this.data.subscriberQuery || '' : '';
+        this.segmentMode = next;
+        this.recipientCount = null;
+        if (next === 'rules') {
+          this.onPreviewRecipients();
+        }
+      };
+
+      if (hasFilter) {
+        this.$utils.confirm(this.$t('campaigns.segmentSwitchConfirm'), apply);
+      } else {
+        apply();
+      }
     },
 
     async updateCampaign(typ) {
@@ -685,7 +740,7 @@ export default Vue.extend({
         name: this.form.name,
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
-        subscriber_query: this.form.subscriberQuery || null,
+        ...this.segmentPayload,
         ramp_days: this.rampDaysValue,
         from_email: this.form.fromEmail,
         messenger: this.form.messenger,
@@ -828,6 +883,19 @@ export default Vue.extend({
       return this.serverConfig.messengers.filter((m) => m !== 'email' && !m.startsWith('email-'));
     },
 
+    isSegmentComplete() {
+      const seg = this.form.segment;
+      return !seg || seg.rules.every((r) => r.field !== 'attribs.'
+        && (r.value !== null || r.op === 'is_set' || r.op === 'not_set'));
+    },
+
+    segmentPayload() {
+      if (this.segmentMode === 'sql') {
+        return { segment: null, subscriber_query: this.form.subscriberQuery || null };
+      }
+      return { segment: this.form.segment, subscriber_query: null };
+    },
+
     rampSettings() {
       return this.serverConfig.ramp_up || { enabled: false, start: 2000, growth: 2 };
     },
@@ -897,7 +965,13 @@ export default Vue.extend({
     },
 
     'form.lists': function onListsChange() {
-      this.onPreviewRecipients();
+      this.schedulePreviewRecipients();
+    },
+
+    'form.segment': function onSegmentChange() {
+      if (this.segmentMode === 'rules') {
+        this.schedulePreviewRecipients();
+      }
     },
 
     // eslint-disable-next-line func-names
@@ -914,6 +988,17 @@ export default Vue.extend({
 
   mounted() {
     window.onbeforeunload = () => this.isUnsaved() || null;
+
+    if (this.canManage) {
+      this.$api.getSubscriberAttribKeys().then((keys) => {
+        this.attribKeys = keys;
+      });
+      this.$api.getCampaigns({
+        no_body: true, per_page: 'all', status: ['running', 'scheduled', 'paused', 'finished', 'cancelled'],
+      }).then((d) => {
+        this.pastCampaigns = d.results;
+      });
+    }
 
     // Fill default form fields.
     this.form.fromEmail = this.serverConfig.from_email;

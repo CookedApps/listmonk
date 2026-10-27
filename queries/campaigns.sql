@@ -26,7 +26,7 @@ camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, send_at, headers, attribs, tags, messenger, template_id, to_send,
         max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source,
-        subscriber_query, ramp_days)
+        subscriber_query, ramp_days, segment)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -44,7 +44,8 @@ camp AS (
             COALESCE($21, (SELECT body_source FROM tpl)),
             -- subscriber_query
             $22,
-            $23
+            $23,
+            $24
         RETURNING id
 ),
 med AS (
@@ -523,6 +524,7 @@ WITH camp AS (
         body_source=$20,
         subscriber_query=$21,
         ramp_days=$22,
+        segment=$23,
         updated_at=NOW()
     WHERE id = $1 RETURNING id
 ),

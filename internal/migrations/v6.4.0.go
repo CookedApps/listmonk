@@ -23,6 +23,7 @@ func V6_4_0(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf, lo *log.Logger
 
 	if _, err := db.Exec(`
 		ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ramp_days INT NULL;
+		ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS segment JSONB NULL;
 		INSERT INTO settings (key, value) VALUES
 			('app.ramp_up_enabled', 'true'),
 			('app.ramp_up_start', '2000'),

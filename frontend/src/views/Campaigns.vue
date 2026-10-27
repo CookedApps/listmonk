@@ -452,11 +452,13 @@ export default Vue.extend({
       let body = '';
       let bodySource = null;
       let subscriberQuery = null;
+      let segment = null;
       let attribs = null;
       await this.$api.getCampaign(c.id).then((data) => {
         body = data.body;
         bodySource = data.bodySource;
         subscriberQuery = data.subscriberQuery;
+        segment = data.segment;
         attribs = data.attribs;
       });
 
@@ -488,6 +490,8 @@ export default Vue.extend({
         archive_meta: c.archiveMeta,
         media: c.media.map((m) => m.id),
         subscriber_query: subscriberQuery,
+        segment,
+        ramp_days: c.rampDays,
         attribs,
       };
 

@@ -115,6 +115,58 @@ type JSON map[string]any
 // StringIntMap is used to define DB Scan()s.
 type StringIntMap map[string]int
 
+// NullJSON is a nullable JSONB column that serializes SQL NULL as JSON null.
+type NullJSON struct {
+	Raw   json.RawMessage
+	Valid bool
+}
+
+// Scan reads a JSONB value or NULL from the DB.
+func (n *NullJSON) Scan(v any) error {
+	n.Raw, n.Valid = nil, false
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case []byte:
+		n.Raw = append([]byte(nil), t...)
+	case string:
+		n.Raw = []byte(t)
+	default:
+		return fmt.Errorf("unsupported type %T for NullJSON", v)
+	}
+	n.Valid = true
+
+	return nil
+}
+
+// Value returns the JSON bytes or NULL for the DB.
+func (n NullJSON) Value() (driver.Value, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return []byte(n.Raw), nil
+}
+
+// MarshalJSON returns the raw document or null.
+func (n NullJSON) MarshalJSON() ([]byte, error) {
+	if !n.Valid || len(n.Raw) == 0 {
+		return []byte("null"), nil
+	}
+	return n.Raw, nil
+}
+
+// UnmarshalJSON keeps the raw document, treating null as not set.
+func (n *NullJSON) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		n.Raw, n.Valid = nil, false
+		return nil
+	}
+	n.Raw = append([]byte(nil), b...)
+	n.Valid = true
+
+	return nil
+}
+
 // Value returns the JSON marshalled SubscriberAttribs.
 func (s JSON) Value() (driver.Value, error) {
 	return json.Marshal(s)

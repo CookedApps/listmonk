@@ -134,6 +134,9 @@ CREATE TABLE campaigns (
     -- Ramp-up: NULL = instance default, 0 = off, N = spread the send over N days.
     ramp_days           INT NULL,
 
+    -- Rule-builder source of subscriber_query, when the segment was built with rules.
+    segment             JSONB NULL,
+
     started_at       TIMESTAMP WITH TIME ZONE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -439,10 +439,86 @@ describe('Campaign clone', () => {
     });
   });
 
+  it('Keeps the rule-builder segment', () => {
+    const segment = { match: 'all', rules: [{ field: 'attribs.city', op: 'eq', value: 'Bengaluru' }] };
+    cloneViaUI({ name: 'rules-src', segment }, 'rules-clone').then((clone) => {
+      expect(clone.segment).to.deep.equal(segment);
+      expect(clone.subscriber_query).to.equal("(subscribers.attribs->>'city' = 'Bengaluru')");
+    });
+  });
+
   it('Keeps attribs with their original keys', () => {
     const attribs = { promo_code: 'X1', nested: { snake_key: 1 } };
     cloneViaUI({ name: 'attribs-src', attribs }, 'attribs-clone').then((clone) => {
       expect(clone.attribs).to.deep.equal(attribs);
+    });
+  });
+});
+
+describe('Campaign audience rules', () => {
+  it('Resets DB', () => {
+    cy.resetDB();
+    cy.loginAndVisit('/admin/campaigns');
+  });
+
+  it('Builds rules, previews the count, and compiles them on save', () => {
+    const create = (name) => cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name, subject: name, type: 'regular', content_type: 'richtext', lists: [1],
+    }).then((r) => r.body.data.id);
+
+    create('rules-past').then((pastID) => {
+      cy.request('PUT', `${apiUrl}/api/campaigns/${pastID}/status`, { status: 'running' });
+      cy.request('PUT', `${apiUrl}/api/campaigns/${pastID}/status`, { status: 'cancelled' });
+    });
+
+    create('rules-ui').then((id) => {
+      cy.visit(`/admin/campaigns/${id}`);
+      cy.get('[data-cy=recipient-count]').contains('1 recipients');
+
+      cy.get('[data-cy=segment-add]').click();
+      cy.get('[data-cy=segment-rule]').should('have.length', 1);
+      cy.get('[data-cy=segment-field]').select('attribs');
+      cy.get('[data-cy=segment-key]').type('ty');
+      cy.get('.segment-builder .dropdown-item').contains('type').click();
+      cy.get('[data-cy=segment-value]').type('unknown');
+      cy.get('[data-cy=recipient-count]').contains('0 recipients');
+
+      cy.get('[data-cy=segment-exclude]').click();
+      cy.get('[data-cy=segment-rule]').should('have.length', 2);
+      cy.get('[data-cy=segment-rule]').eq(1).find('[data-cy=segment-value]').select('rules-past');
+
+      cy.get('[data-cy=btn-save]').click();
+      cy.wait(250);
+      cy.request(`${apiUrl}/api/campaigns/${id}`).then((c) => {
+        expect(c.body.data.segment.rules).to.have.length(2);
+        expect(c.body.data.segment.rules[1].op).to.equal('not_received');
+        expect(c.body.data.subscriber_query).to.contain("subscribers.attribs->>'type' = 'unknown'");
+        expect(c.body.data.subscriber_query).to.contain('campaign_sends');
+      });
+
+      cy.reload();
+      cy.get('[data-cy=segment-rule]').should('have.length', 2);
+    });
+  });
+
+  it('Rejects raw SQL from a user without the SQL permission but accepts rules', () => {
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'rules-api', subject: 'rules', type: 'regular', content_type: 'richtext', lists: [1],
+      segment: { rules: [{ field: 'email', op: 'contains', value: 'example' }] },
+    }).then((r) => {
+      expect(r.body.data.subscriber_query).to.equal("(subscribers.email ILIKE '%example%')");
+    });
+
+    cy.request({
+      method: 'POST',
+      url: `${apiUrl}/api/campaigns`,
+      failOnStatusCode: false,
+      body: {
+        name: 'rules-bad', subject: 'rules', type: 'regular', content_type: 'richtext', lists: [1],
+        segment: { rules: [{ field: 'password', op: 'eq', value: 'x' }] },
+      },
+    }).then((r) => {
+      expect(r.status).to.equal(400);
     });
   });
 });
@@ -458,8 +534,8 @@ describe('Campaign ramp-up', () => {
       name: 'ramp-src', subject: 'ramp', type: 'regular', content_type: 'richtext', lists: [1],
     }).then((r) => {
       cy.visit(`/admin/campaigns/${r.body.data.id}`);
-      cy.get('[data-cy=ramp-mode] select').select('custom');
-      cy.get('[data-cy=ramp-days] input').clear().type('4');
+      cy.get('[data-cy=ramp-mode]').select('custom');
+      cy.get('[data-cy=ramp-days]').clear().type('4');
       cy.get('[data-cy=ramp-preview] .slice').should('have.length', 4);
       cy.get('[data-cy=btn-save]').click();
       cy.wait(250);
@@ -468,8 +544,8 @@ describe('Campaign ramp-up', () => {
       });
 
       cy.reload();
-      cy.get('[data-cy=ramp-mode] select').should('have.value', 'custom');
-      cy.get('[data-cy=ramp-mode] select').select('off');
+      cy.get('[data-cy=ramp-mode]').should('have.value', 'custom');
+      cy.get('[data-cy=ramp-mode]').select('off');
       cy.get('[data-cy=ramp-preview]').should('not.exist');
       cy.get('[data-cy=btn-save]').click();
       cy.wait(250);

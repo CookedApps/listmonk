@@ -22,6 +22,7 @@ var (
 		"lists":            {},
 		"subscriber_lists": {},
 		"campaigns":        {},
+		"campaign_sends":   {},
 		"campaign_lists":   {},
 		"campaign_views":   {},
 		"links":            {},
@@ -29,6 +30,18 @@ var (
 		"bounces":          {},
 	}
 )
+
+// GetSubscriberAttribKeys returns the attribute keys seen on recent subscribers.
+func (c *Core) GetSubscriberAttribKeys() ([]string, error) {
+	out := []string{}
+	if err := c.q.GetSubscriberAttribKeys.Select(&out); err != nil {
+		c.log.Printf("error fetching subscriber attrib keys: %v", err)
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.subscribers}", "error", pqErrMsg(err)))
+	}
+
+	return out, nil
+}
 
 // GetSubscriber fetches a subscriber by one of the given params.
 func (c *Core) GetSubscriber(id int, uuid, email string) (models.Subscriber, error) {

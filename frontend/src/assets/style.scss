@@ -887,6 +887,21 @@ section.import {
   }
 }
 
+/* Campaign audience rule builder */
+section.campaign .segment-builder {
+  .rule .column:not(.is-narrow) {
+    min-width: 12em;
+  }
+
+  .select {
+    max-width: 20em;
+  }
+
+  .autocomplete {
+    width: 12em;
+  }
+}
+
 /* Campaign ramp-up preview */
 section.campaign .ramp-preview {
   .slice {

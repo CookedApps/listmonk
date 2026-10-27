@@ -95,6 +95,16 @@ func (a *App) GetSubscriberActivity(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// GetSubscriberAttribKeys returns attribute keys for the campaign segment builder.
+func (a *App) GetSubscriberAttribKeys(c echo.Context) error {
+	out, err := a.core.GetSubscriberAttribKeys()
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
 // QuerySubscribers handles querying subscribers based on an arbitrary SQL expression.
 func (a *App) QuerySubscribers(c echo.Context) error {
 	// Get the authenticated user.

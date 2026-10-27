@@ -159,6 +159,8 @@ export const deleteLists = (params) => http.delete(
 );
 
 // Subscribers.
+export const getSubscriberAttribKeys = async () => http.get('/api/subscribers/attrib-keys');
+
 export const getSubscribers = async (params) => http.get(
   '/api/subscribers',
   {

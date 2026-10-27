@@ -15,6 +15,7 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/notifs"
+	"github.com/knadh/listmonk/internal/segment"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -363,14 +364,35 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 // processCampaignSegment normalizes, permission-gates, and validates a campaign's optional
 // subscriber_query segment in place. Segments apply only to regular campaigns; the permission
 // and validation run only when the query is newly set or changed from oldQuery.
+// Rule-builder segments compile to subscriber_query on the server and need no SQL permission.
 func (a *App) processCampaignSegment(c echo.Context, o *campReq, oldQuery string) error {
 	q := formatSQLExp(o.SubscriberQuery.String)
 
 	// Segments only apply to regular campaigns.
 	if o.Type != models.CampaignTypeRegular {
 		o.SubscriberQuery = null.String{}
+		o.Segment = models.NullJSON{}
 		return nil
 	}
+
+	seg, err := segment.Parse(o.Segment.Raw)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.invalidSegment", "error", err.Error()))
+	}
+	if !seg.IsEmpty() {
+		q, err = seg.Compile()
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.invalidSegment", "error", err.Error()))
+		}
+		if err := a.core.ValidateCampaignQuery(o.ListIDs, models.CampaignTypeRegular, q); err != nil {
+			return err
+		}
+		b, _ := json.Marshal(seg)
+		o.Segment = models.NullJSON{Raw: b, Valid: true}
+		o.SubscriberQuery = null.NewString(q, true)
+		return nil
+	}
+	o.Segment = models.NullJSON{}
 
 	if q != "" && q != formatSQLExp(oldQuery) {
 		// Writing an arbitrary SQL segment needs the same permission as subscriber SQL queries.
@@ -399,8 +421,9 @@ func (a *App) PreviewCampaignRecipients(c echo.Context) error {
 	user := auth.GetUser(c)
 
 	var req struct {
-		Lists []int  `json:"lists"`
-		Query string `json:"query"`
+		Lists   []int           `json:"lists"`
+		Query   string          `json:"query"`
+		Segment json.RawMessage `json:"segment"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -412,7 +435,19 @@ func (a *App) PreviewCampaignRecipients(c echo.Context) error {
 			a.i18n.Ts("globals.messages.missingFields", "name", "{globals.terms.lists}"))
 	}
 
-	count, err := a.core.CountCampaignRecipients(listIDs, models.CampaignTypeRegular, formatSQLExp(req.Query))
+	q := formatSQLExp(req.Query)
+	if seg, err := segment.Parse(req.Segment); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.invalidSegment", "error", err.Error()))
+	} else if !seg.IsEmpty() {
+		if q, err = seg.Compile(); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.invalidSegment", "error", err.Error()))
+		}
+	} else if q != "" && !user.HasPerm(auth.PermSubscribersSqlQuery) {
+		return echo.NewHTTPError(http.StatusForbidden,
+			a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
+	}
+
+	count, err := a.core.CountCampaignRecipients(listIDs, models.CampaignTypeRegular, q)
 	if err != nil {
 		return err
 	}
