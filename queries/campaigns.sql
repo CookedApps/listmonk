@@ -505,6 +505,14 @@ WITH camp AS (
         altbody=(CASE WHEN $6 = '' THEN NULL ELSE $6 END),
         content_type=$7::content_type,
         send_at=$8::TIMESTAMP WITH TIME ZONE,
+        -- A ramped campaign parked between slices keeps its daily windows aligned to the new send time.
+        started_at=(
+            CASE
+                WHEN status = 'scheduled' AND started_at IS NOT NULL AND send_at IS NOT NULL AND $8 IS NOT NULL
+                    THEN started_at + ($8::TIMESTAMP WITH TIME ZONE - send_at)
+                ELSE started_at
+            END
+        ),
         status=(
             CASE
                 WHEN status = 'scheduled' AND $8 IS NULL THEN 'draft'

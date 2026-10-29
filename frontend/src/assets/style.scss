@@ -914,6 +914,10 @@ section.campaign .audience pre {
 
 /* Campaign ramp-up preview */
 section.campaign .ramp-preview {
+  .slice.is-sent {
+    opacity: 0.5;
+  }
+
   .slice {
     display: flex;
     align-items: center;

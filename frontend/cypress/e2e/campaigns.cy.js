@@ -677,6 +677,64 @@ describe('Campaign ramp-up', () => {
   });
 });
 
+describe('Campaign ramp-up reschedule', () => {
+  it('Resets DB', () => {
+    cy.resetDB();
+    cy.loginAndVisit('/admin/campaigns');
+  });
+
+  it('Moves the remaining ramp-up windows with the send time', () => {
+    for (let i = 0; i < 9; i += 1) {
+      cy.request('POST', `${apiUrl}/api/subscribers`, {
+        email: `ramp${i}@reschedule.example`, name: `ramp${i}`, status: 'enabled', lists: [1],
+      });
+    }
+
+    cy.request('POST', `${apiUrl}/api/campaigns`, {
+      name: 'ramp-move', subject: 'ramp', type: 'regular', content_type: 'richtext', lists: [1], ramp_days: 3,
+    }).then((r) => {
+      const { id } = r.body.data;
+      const get = () => cy.request(`${apiUrl}/api/campaigns/${id}`).then((c) => c.body.data);
+
+      cy.request('PUT', `${apiUrl}/api/campaigns/${id}/status`, { status: 'running' });
+      cy.waitUntil(() => get().then((c) => c.status === 'scheduled'), { timeout: 30000, interval: 1000 });
+
+      get().then((before) => {
+        expect(before.started_at).to.not.equal(null);
+
+        cy.visit(`/admin/campaigns/${id}`);
+        cy.get('[data-cy=ramp-preview] .slice.is-sent').should('have.length', 1);
+
+        const shift = 10 * 3600 * 1000;
+        const sendAt = new Date(new Date(before.send_at).getTime() - shift).toISOString();
+        cy.request('PUT', `${apiUrl}/api/campaigns/${id}`, {
+          name: before.name,
+          subject: before.subject,
+          from_email: before.from_email,
+          body: before.body,
+          content_type: before.content_type,
+          messenger: before.messenger,
+          template_id: before.template_id,
+          type: before.type,
+          lists: before.lists.map((l) => l.id),
+          send_later: true,
+          send_at: sendAt,
+          ramp_days: before.ramp_days,
+        });
+
+        get().then((after) => {
+          const moved = (a, b) => new Date(a).getTime() - new Date(b).getTime();
+          expect(after.status).to.equal('scheduled');
+          expect(moved(after.send_at, before.send_at)).to.equal(-shift);
+          expect(moved(after.started_at, before.started_at)).to.equal(-shift);
+          expect(after.sent).to.equal(before.sent);
+          expect(after.to_send).to.equal(before.to_send);
+        });
+      });
+    });
+  });
+});
+
 describe('Campaign image embed', () => {
   const mailhog = 'http://localhost:8025';
   const logoUrl = `${apiUrl}/uploads/logo.png`;

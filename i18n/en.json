@@ -83,6 +83,7 @@
     "campaigns.rampUpCustom": "Custom number of days",
     "campaigns.rampUpDays": "Days",
     "campaigns.rampUpPerDay": "{num} on {date}",
+    "campaigns.rampUpSent": "{num} sent",
     "campaigns.rampUpFinishes": "Last slice goes out on {date}.",
     "campaigns.rampUpWarnStart": "Day one sends more than the recommended {num}. Add days to stay safe.",
     "campaigns.rampUpNoRecipients": "Select lists to preview the daily slices.",

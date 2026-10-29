@@ -200,14 +200,17 @@
                   </div>
 
                   <div v-if="rampDaysEffective > 1" class="ramp-preview mb-5" data-cy="ramp-preview">
-                    <p v-if="recipientCount === null" class="is-size-7 has-text-grey">
+                    <p v-if="rampTotal === null" class="is-size-7 has-text-grey">
                       {{ $t('campaigns.rampUpNoRecipients') }}
                     </p>
                     <template v-else>
-                      <div v-for="(s, i) in rampSlices" :key="i" class="slice">
+                      <div v-for="(s, i) in rampSlices" :key="i" class="slice" :class="{ 'is-sent': s.sent }">
                         <span class="day is-size-7 has-text-grey">{{ i + 1 }}</span>
                         <span class="bar"><span :style="{ width: `${s.pct}%` }" /></span>
-                        <span class="is-size-7">
+                        <span v-if="s.sent" class="is-size-7">
+                          {{ $t('campaigns.rampUpSent', { num: $utils.formatNumber(s.num) }) }}
+                        </span>
+                        <span v-else class="is-size-7">
                           {{ $t('campaigns.rampUpPerDay', { num: $utils.formatNumber(s.num), date: s.date }) }}
                         </span>
                       </div>
@@ -916,11 +919,19 @@ export default Vue.extend({
       return this.serverConfig.ramp_up || { enabled: false, start: 2000, growth: 2 };
     },
 
+    isMidRamp() {
+      return this.data.status === 'scheduled' && !!this.data.startedAt;
+    },
+
+    rampTotal() {
+      return this.isMidRamp ? this.data.toSend : this.recipientCount;
+    },
+
     rampRecommendedDays() {
-      if (this.recipientCount === null) {
+      if (this.rampTotal === null) {
         return null;
       }
-      return recommendedRampDays(this.recipientCount, this.rampSettings.start, this.rampSettings.growth);
+      return recommendedRampDays(this.rampTotal, this.rampSettings.start, this.rampSettings.growth);
     },
 
     rampAutoLabel() {
@@ -948,22 +959,30 @@ export default Vue.extend({
     },
 
     rampSlices() {
-      if (this.recipientCount === null || this.rampDaysEffective < 2) {
+      if (this.rampTotal === null || this.rampDaysEffective < 2) {
         return [];
       }
 
-      const caps = rampCaps(this.recipientCount, this.rampDaysEffective, this.rampSettings.growth);
+      const caps = rampCaps(this.rampTotal, this.rampDaysEffective, this.rampSettings.growth);
       const biggest = Math.max(...caps, 1);
       const start = dayjs(this.form.sendLater && this.form.sendAtDate ? this.form.sendAtDate : undefined);
-      return caps.map((num, i) => ({
-        num,
-        pct: (num / biggest) * 100,
-        date: start.add(i, 'day').format('ddd, D MMM'),
-      }));
+      const next = this.isMidRamp ? Math.round(dayjs(this.data.sendAt).diff(this.data.startedAt, 'hour') / 24) : 0;
+
+      let capped = 0;
+      return caps.map((cap, i) => {
+        capped += cap;
+        const num = i === next && this.isMidRamp ? Math.max(capped - this.data.sent, 0) : cap;
+        return {
+          num,
+          sent: i < next,
+          pct: (num / biggest) * 100,
+          date: start.add(i - next, 'day').format('ddd, D MMM'),
+        };
+      });
     },
 
     rampWarnStart() {
-      return this.rampSlices.length > 0 && this.rampSlices[0].num > this.rampSettings.start;
+      return !this.isMidRamp && this.rampSlices.length > 0 && this.rampSlices[0].num > this.rampSettings.start;
     },
   },
 
